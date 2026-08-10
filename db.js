@@ -14,12 +14,19 @@ CREATE TABLE IF NOT EXISTS logs(
 CREATE TABLE IF NOT EXISTS payments(
   id TEXT PRIMARY KEY, workerId TEXT, date TEXT, amount REAL, note TEXT
 );
+CREATE TABLE IF NOT EXISTS projectPayments(
+  id TEXT PRIMARY KEY, projectId TEXT, date TEXT, amount REAL, note TEXT
+);
 `;
 
 function open(file) {
   const d = new Database(file);
   d.pragma('journal_mode = WAL');
   d.exec(SCHEMA);
+  // v1.2 migration: extra worker columns on DBs created before them
+  const cols = d.prepare('PRAGMA table_info(workers)').all().map(c => c.name);
+  for (const c of ['idNumber', 'bankName', 'bankAccount', 'idPhoto', 'permitPhoto'])
+    if (!cols.includes(c)) d.exec(`ALTER TABLE workers ADD COLUMN ${c} TEXT DEFAULT ''`);
 
   const api = {
     getAll() {
@@ -27,12 +34,13 @@ function open(file) {
         workers: d.prepare('SELECT * FROM workers').all(),
         projects: d.prepare('SELECT * FROM projects').all(),
         logs: d.prepare('SELECT * FROM logs').all(),
-        payments: d.prepare('SELECT * FROM payments').all()
+        payments: d.prepare('SELECT * FROM payments').all(),
+        projectPayments: d.prepare('SELECT * FROM projectPayments').all()
       };
     },
     addWorker(w) {
-      d.prepare('INSERT INTO workers(id,name,phone,job,defaultWage) VALUES (@id,@name,@phone,@job,@defaultWage)')
-        .run({ phone: '', job: '', defaultWage: 0, ...w });
+      d.prepare('INSERT INTO workers(id,name,phone,job,defaultWage,idNumber,bankName,bankAccount,idPhoto,permitPhoto) VALUES (@id,@name,@phone,@job,@defaultWage,@idNumber,@bankName,@bankAccount,@idPhoto,@permitPhoto)')
+        .run({ phone: '', job: '', defaultWage: 0, idNumber: '', bankName: '', bankAccount: '', idPhoto: '', permitPhoto: '', ...w });
     },
     addProject(p) {
       d.prepare('INSERT INTO projects(id,name,location,start) VALUES (@id,@name,@location,@start)')
@@ -46,8 +54,17 @@ function open(file) {
       d.prepare('INSERT INTO payments(id,workerId,date,amount,note) VALUES (@id,@workerId,@date,@amount,@note)')
         .run({ date: '', amount: 0, note: '', ...p });
     },
+    addProjectPayment(p) {
+      d.prepare('INSERT INTO projectPayments(id,projectId,date,amount,note) VALUES (@id,@projectId,@date,@amount,@note)')
+        .run({ date: '', amount: 0, note: '', ...p });
+    },
+    updateProjectPayment(p) {
+      d.prepare('UPDATE projectPayments SET projectId=@projectId, date=@date, amount=@amount, note=@note WHERE id=@id').run(p);
+    },
+    deleteProjectPayment(id) { d.prepare('DELETE FROM projectPayments WHERE id=?').run(id); },
     updateWorker(w) {
-      d.prepare('UPDATE workers SET name=@name, phone=@phone, job=@job, defaultWage=@defaultWage WHERE id=@id').run(w);
+      d.prepare('UPDATE workers SET name=@name, phone=@phone, job=@job, defaultWage=@defaultWage, idNumber=@idNumber, bankName=@bankName, bankAccount=@bankAccount, idPhoto=@idPhoto, permitPhoto=@permitPhoto WHERE id=@id')
+        .run({ idNumber: '', bankName: '', bankAccount: '', idPhoto: '', permitPhoto: '', ...w });
     },
     updateProject(p) {
       d.prepare('UPDATE projects SET name=@name, location=@location, start=@start WHERE id=@id').run(p);
@@ -68,13 +85,16 @@ function open(file) {
     },
     deleteProject(id) {
       // logs keep their wages; projectName() falls back to "غير محدد"
-      d.prepare('DELETE FROM projects WHERE id=?').run(id);
+      d.transaction(() => {
+        d.prepare('DELETE FROM projectPayments WHERE projectId=?').run(id);
+        d.prepare('DELETE FROM projects WHERE id=?').run(id);
+      })();
     },
     deleteLog(id) { d.prepare('DELETE FROM logs WHERE id=?').run(id); },
     deletePayment(id) { d.prepare('DELETE FROM payments WHERE id=?').run(id); },
     resetAll() {
       d.transaction(() => {
-        for (const t of ['workers', 'projects', 'logs', 'payments']) d.exec(`DELETE FROM ${t}`);
+        for (const t of ['workers', 'projects', 'logs', 'payments', 'projectPayments']) d.exec(`DELETE FROM ${t}`);
       })();
     },
     importAll(data) {
@@ -84,6 +104,7 @@ function open(file) {
         for (const p of data.projects || []) api.addProject(p);
         for (const l of data.logs || []) api.addLog(l);
         for (const p of data.payments || []) api.addPayment(p);
+        for (const p of data.projectPayments || []) api.addProjectPayment(p);
       })();
     },
     close() { d.close(); }

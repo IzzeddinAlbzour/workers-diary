@@ -1,4 +1,5 @@
-const { app, BrowserWindow, ipcMain, dialog, Menu } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, Menu, shell } = require('electron');
+const crypto = require('crypto');
 const path = require('path');
 const fs = require('fs');
 const { open } = require('./db');
@@ -81,7 +82,7 @@ function saveState() {
 function createWindow() {
   const s = loadState();
   win = new BrowserWindow({
-    width: s.width || 600, height: s.height || 900,
+    width: s.width || 1200, height: s.height || 820,
     x: s.x, y: s.y,
     minWidth: 420, minHeight: 700,
     title: 'يوميات العمال',
@@ -137,6 +138,26 @@ app.whenReady().then(() => {
   ipcMain.handle('deleteProject', (e, id) => db.deleteProject(id));
   ipcMain.handle('deleteLog', (e, id) => db.deleteLog(id));
   ipcMain.handle('deletePayment', (e, id) => db.deletePayment(id));
+  ipcMain.handle('addProjectPayment', (e, p) => db.addProjectPayment(p));
+  ipcMain.handle('updateProjectPayment', (e, p) => db.updateProjectPayment(p));
+  ipcMain.handle('deleteProjectPayment', (e, id) => db.deleteProjectPayment(id));
+
+  const photosDir = () => path.join(userData(), 'photos');
+  const photoFile = name => path.join(photosDir(), path.basename(name));
+  const photoUrl = name => 'file:///' + photoFile(name).replace(/\\/g, '/');
+  ipcMain.handle('pickPhoto', async () => {
+    const r = await dialog.showOpenDialog(win, {
+      filters: [{ name: 'صور', extensions: ['jpg', 'jpeg', 'png', 'heic', 'webp', 'gif'] }],
+      properties: ['openFile']
+    });
+    if (r.canceled || !r.filePaths.length) return null;
+    fs.mkdirSync(photosDir(), { recursive: true });
+    const name = crypto.randomUUID() + path.extname(r.filePaths[0]).toLowerCase();
+    fs.copyFileSync(r.filePaths[0], photoFile(name));
+    return { name, url: photoUrl(name) };
+  });
+  ipcMain.handle('photoUrl', (e, name) => name && fs.existsSync(photoFile(name)) ? photoUrl(name) : null);
+  ipcMain.handle('openPhoto', (e, name) => { if (name && fs.existsSync(photoFile(name))) shell.openPath(photoFile(name)); });
   ipcMain.handle('resetAll', () => db.resetAll());
   ipcMain.handle('importAll', (e, data) => db.importAll(data));
 

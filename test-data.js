@@ -32,7 +32,7 @@ const wPaid = all.payments.filter(x => x.workerId === w.id).reduce((a, x) => a +
 assert.strictEqual(wEarned - wPaid, 180, 'per-worker balance');
 
 // field names round-trip identical to JSON shape
-assert.deepStrictEqual(all.workers[0], w);
+assert.deepStrictEqual(all.workers[0], { ...w, idNumber: '', bankName: '', bankAccount: '', idPhoto: '', permitPhoto: '' });
 assert.deepStrictEqual(all.projects[0], p);
 assert.deepStrictEqual(all.logs[0], l1);
 assert.deepStrictEqual(all.payments[0], pay);
@@ -48,7 +48,7 @@ assert.deepStrictEqual(db.getAll(), snapshot, 'export -> reset -> import restore
 // update round-trip
 const w2 = { ...w, name: 'أحمد محدث', defaultWage: 175 };
 db.updateWorker(w2);
-assert.deepStrictEqual(db.getAll().workers[0], w2, 'updateWorker persists all fields');
+assert.deepStrictEqual(db.getAll().workers[0], { ...w2, idNumber: '', bankName: '', bankAccount: '', idPhoto: '', permitPhoto: '' }, 'updateWorker persists all fields');
 const l1b = { ...l1, wage: 160, hours: 9 };
 db.updateLog(l1b);
 assert.deepStrictEqual(db.getAll().logs.find(x => x.id === l1.id), l1b, 'updateLog persists');
@@ -70,6 +70,43 @@ db.addPayment({ id: uuid(), workerId: w.id, date: '2026-08-12', amount: 10, note
 db.deleteWorker(w.id);
 a2 = db.getAll();
 assert.strictEqual(a2.workers.length + a2.logs.length + a2.payments.length, 0, 'worker delete cascades logs and payments');
+
+// v1.2: worker extra fields round-trip
+const w3 = { id: uuid(), name: 'سامي', phone: '', job: '', defaultWage: 100, idNumber: '401234567', bankName: 'بنك فلسطين', bankAccount: '123456', idPhoto: 'a.jpg', permitPhoto: 'b.jpg' };
+db.addWorker(w3);
+assert.deepStrictEqual(db.getAll().workers[0], w3, 'worker extra fields persist');
+db.updateWorker({ ...w3, idNumber: '999', bankName: 'العربي' });
+assert.strictEqual(db.getAll().workers[0].idNumber, '999', 'updateWorker persists idNumber');
+
+// v1.2: project payments CRUD + cascade + import round-trip
+const p3 = { id: uuid(), name: 'برج', location: '', start: '2026-08-01' };
+db.addProject(p3);
+const pp = { id: uuid(), projectId: p3.id, date: '2026-08-11', amount: 5000, note: 'دفعة أولى' };
+db.addProjectPayment(pp);
+assert.deepStrictEqual(db.getAll().projectPayments[0], pp, 'projectPayment persists');
+db.updateProjectPayment({ ...pp, amount: 6000 });
+assert.strictEqual(db.getAll().projectPayments[0].amount, 6000, 'updateProjectPayment');
+const snap2 = db.getAll();
+db.resetAll();
+assert.strictEqual(db.getAll().projectPayments.length, 0, 'reset clears projectPayments');
+db.importAll(snap2);
+assert.deepStrictEqual(db.getAll(), snap2, 'import restores projectPayments too');
+db.deleteProject(p3.id);
+assert.strictEqual(db.getAll().projectPayments.length, 0, 'project delete cascades its payments');
+
+// migration: old-schema DB gains new columns on open
+const Database = require('better-sqlite3');
+const oldFile = path.join(dir, 'old.db');
+const raw = new Database(oldFile);
+raw.exec("CREATE TABLE workers(id TEXT PRIMARY KEY, name TEXT, phone TEXT, job TEXT, defaultWage REAL)");
+raw.prepare("INSERT INTO workers VALUES ('x','قديم','','',90)").run();
+raw.close();
+const migrated = open(oldFile);
+const mw = migrated.getAll().workers[0];
+assert.strictEqual(mw.idNumber, '', 'migration adds idNumber');
+assert.strictEqual(mw.name, 'قديم', 'migration keeps old data');
+migrated.addProjectPayment({ id: uuid(), projectId: 'p', date: '2026-01-01', amount: 1, note: '' });
+migrated.close();
 
 db.close();
 console.log('ALL TESTS PASSED');
