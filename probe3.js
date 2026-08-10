@@ -1,0 +1,1 @@
+const {app,BrowserWindow}=require("electron");const fs=require("fs");app.whenReady().then(()=>{fs.writeFileSync("probe3.txt","ready");const w=new BrowserWindow({width:400,height:300});w.loadFile("app.html");fs.appendFileSync("probe3.txt"," window")});

@@ -1,0 +1,54 @@
+{
+  "name": "workers-diary",
+  "productName": "يوميات العمال",
+  "version": "1.0.0",
+  "description": "إدارة العمال والمشاريع والحسابات",
+  "main": "main.js",
+  "author": "Workers Diary",
+  "license": "MIT",
+  "scripts": {
+    "start": "electron .",
+    "test": "node test-data.js",
+    "dist": "electron-builder --mac --x64"
+  },
+  "dependencies": {
+    "better-sqlite3": "^12.2.0"
+  },
+  "devDependencies": {
+    "electron": "^37.2.0",
+    "electron-builder": "^25.1.8",
+    "png2icons": "^2.0.1"
+  },
+  "build": {
+    "appId": "com.workersdiary.app",
+    "productName": "يوميات العمال",
+    "files": [
+      "main.js",
+      "preload.js",
+      "db.js",
+      "app.html",
+      "build/icon.icns"
+    ],
+    "mac": {
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "category": "public.app-category.business",
+      "identity": null,
+      "icon": "build/icon.icns",
+      "minimumSystemVersion": "11.0.0"
+    },
+    "dmg": {
+      "sign": false
+    }
+  },
+  "allowScripts": {
+    "better-sqlite3@12.11.1": true,
+    "electron@37.10.3": true
+  }
+}
