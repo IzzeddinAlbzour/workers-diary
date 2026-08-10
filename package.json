@@ -1,10 +1,10 @@
 {
   "name": "workers-diary",
   "productName": "يوميات العمال",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "إدارة العمال والمشاريع والحسابات",
   "main": "main.js",
-  "author": "Workers Diary",
+  "author": "Ezz Al-Bzour",
   "license": "MIT",
   "scripts": {
     "start": "electron .",
@@ -27,6 +27,7 @@
       "preload.js",
       "db.js",
       "app.html",
+      "fonts/**",
       "build/icon.icns"
     ],
     "mac": {
@@ -45,7 +46,8 @@
     },
     "dmg": {
       "sign": false
-    }
+    },
+    "copyright": "Copyright © 2026 Ezz Al-Bzour — WhatsApp +972 569472423"
   },
   "allowScripts": {
     "better-sqlite3@12.11.1": true,

@@ -46,6 +46,32 @@ function open(file) {
       d.prepare('INSERT INTO payments(id,workerId,date,amount,note) VALUES (@id,@workerId,@date,@amount,@note)')
         .run({ date: '', amount: 0, note: '', ...p });
     },
+    updateWorker(w) {
+      d.prepare('UPDATE workers SET name=@name, phone=@phone, job=@job, defaultWage=@defaultWage WHERE id=@id').run(w);
+    },
+    updateProject(p) {
+      d.prepare('UPDATE projects SET name=@name, location=@location, start=@start WHERE id=@id').run(p);
+    },
+    updateLog(l) {
+      d.prepare('UPDATE logs SET workerId=@workerId, projectId=@projectId, date=@date, hours=@hours, wage=@wage, type=@type, note=@note WHERE id=@id').run(l);
+    },
+    updatePayment(p) {
+      d.prepare('UPDATE payments SET workerId=@workerId, date=@date, amount=@amount, note=@note WHERE id=@id').run(p);
+    },
+    deleteWorker(id) {
+      // cascade: a worker's logs and payments are meaningless without the worker
+      d.transaction(() => {
+        d.prepare('DELETE FROM logs WHERE workerId=?').run(id);
+        d.prepare('DELETE FROM payments WHERE workerId=?').run(id);
+        d.prepare('DELETE FROM workers WHERE id=?').run(id);
+      })();
+    },
+    deleteProject(id) {
+      // logs keep their wages; projectName() falls back to "غير محدد"
+      d.prepare('DELETE FROM projects WHERE id=?').run(id);
+    },
+    deleteLog(id) { d.prepare('DELETE FROM logs WHERE id=?').run(id); },
+    deletePayment(id) { d.prepare('DELETE FROM payments WHERE id=?').run(id); },
     resetAll() {
       d.transaction(() => {
         for (const t of ['workers', 'projects', 'logs', 'payments']) d.exec(`DELETE FROM ${t}`);

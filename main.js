@@ -129,6 +129,14 @@ app.whenReady().then(() => {
   ipcMain.handle('addProject', (e, p) => db.addProject(p));
   ipcMain.handle('addLog', (e, l) => db.addLog(l));
   ipcMain.handle('addPayment', (e, p) => db.addPayment(p));
+  ipcMain.handle('updateWorker', (e, w) => db.updateWorker(w));
+  ipcMain.handle('updateProject', (e, p) => db.updateProject(p));
+  ipcMain.handle('updateLog', (e, l) => db.updateLog(l));
+  ipcMain.handle('updatePayment', (e, p) => db.updatePayment(p));
+  ipcMain.handle('deleteWorker', (e, id) => db.deleteWorker(id));
+  ipcMain.handle('deleteProject', (e, id) => db.deleteProject(id));
+  ipcMain.handle('deleteLog', (e, id) => db.deleteLog(id));
+  ipcMain.handle('deletePayment', (e, id) => db.deletePayment(id));
   ipcMain.handle('resetAll', () => db.resetAll());
   ipcMain.handle('importAll', (e, data) => db.importAll(data));
 

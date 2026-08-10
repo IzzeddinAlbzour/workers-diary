@@ -45,5 +45,31 @@ assert.strictEqual(all.workers.length + all.projects.length + all.logs.length + 
 db.importAll(snapshot);
 assert.deepStrictEqual(db.getAll(), snapshot, 'export -> reset -> import restores identical data');
 
+// update round-trip
+const w2 = { ...w, name: 'أحمد محدث', defaultWage: 175 };
+db.updateWorker(w2);
+assert.deepStrictEqual(db.getAll().workers[0], w2, 'updateWorker persists all fields');
+const l1b = { ...l1, wage: 160, hours: 9 };
+db.updateLog(l1b);
+assert.deepStrictEqual(db.getAll().logs.find(x => x.id === l1.id), l1b, 'updateLog persists');
+
+// deleteLog / deletePayment single-row
+db.deleteLog(l2.id);
+assert.strictEqual(db.getAll().logs.length, 1, 'deleteLog removes one row');
+db.deletePayment(pay.id);
+assert.strictEqual(db.getAll().payments.length, 0, 'deletePayment removes row');
+
+// deleteProject keeps logs (orphan projectId)
+db.deleteProject(p.id);
+let a2 = db.getAll();
+assert.strictEqual(a2.projects.length, 0, 'project gone');
+assert.strictEqual(a2.logs.length, 1, 'logs survive project delete');
+
+// deleteWorker cascades logs+payments
+db.addPayment({ id: uuid(), workerId: w.id, date: '2026-08-12', amount: 10, note: '' });
+db.deleteWorker(w.id);
+a2 = db.getAll();
+assert.strictEqual(a2.workers.length + a2.logs.length + a2.payments.length, 0, 'worker delete cascades logs and payments');
+
 db.close();
 console.log('ALL TESTS PASSED');
