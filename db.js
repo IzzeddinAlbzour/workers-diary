@@ -1,4 +1,5 @@
 const Database = require('better-sqlite3');
+const crypto = require('crypto');
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS workers(
@@ -17,7 +18,14 @@ CREATE TABLE IF NOT EXISTS payments(
 CREATE TABLE IF NOT EXISTS projectPayments(
   id TEXT PRIMARY KEY, projectId TEXT, date TEXT, amount REAL, note TEXT
 );
+CREATE TABLE IF NOT EXISTS users(
+  id TEXT PRIMARY KEY, name TEXT UNIQUE, salt TEXT, passHash TEXT,
+  isAdmin INTEGER DEFAULT 0, perms TEXT DEFAULT '{}'
+);
+CREATE TABLE IF NOT EXISTS settings(key TEXT PRIMARY KEY, value TEXT);
 `;
+
+const hashPass = (pass, salt) => crypto.scryptSync(String(pass), salt, 32).toString('hex');
 
 function open(file) {
   const d = new Database(file);
@@ -106,6 +114,44 @@ function open(file) {
         for (const p of data.payments || []) api.addPayment(p);
         for (const p of data.projectPayments || []) api.addProjectPayment(p);
       })();
+    },
+    // ---- users / auth (same-device trust model; hashes stop casual snooping) ----
+    userCount() { return d.prepare('SELECT COUNT(*) c FROM users').get().c; },
+    listUsers() {
+      return d.prepare('SELECT id,name,isAdmin,perms FROM users').all()
+        .map(u => ({ ...u, isAdmin: !!u.isAdmin, perms: JSON.parse(u.perms || '{}') }));
+    },
+    addUser({ id, name, pass, isAdmin = false, perms = {} }) {
+      const salt = crypto.randomBytes(16).toString('hex');
+      d.prepare('INSERT INTO users(id,name,salt,passHash,isAdmin,perms) VALUES (?,?,?,?,?,?)')
+        .run(id, String(name).trim(), salt, hashPass(pass, salt), isAdmin ? 1 : 0, JSON.stringify(perms));
+    },
+    updateUser({ id, name, pass, isAdmin, perms }) {
+      const u = d.prepare('SELECT * FROM users WHERE id=?').get(id);
+      if (!u) return;
+      const salt = pass ? crypto.randomBytes(16).toString('hex') : u.salt;
+      d.prepare('UPDATE users SET name=?, salt=?, passHash=?, isAdmin=?, perms=? WHERE id=?')
+        .run(String(name ?? u.name).trim(), salt, pass ? hashPass(pass, salt) : u.passHash,
+             (isAdmin ?? !!u.isAdmin) ? 1 : 0, JSON.stringify(perms ?? JSON.parse(u.perms || '{}')), id);
+    },
+    deleteUser(id) {
+      const u = d.prepare('SELECT isAdmin FROM users WHERE id=?').get(id);
+      if (u && u.isAdmin && d.prepare('SELECT COUNT(*) c FROM users WHERE isAdmin=1').get().c <= 1)
+        throw new Error('last-admin');
+      d.prepare('DELETE FROM users WHERE id=?').run(id);
+    },
+    login(name, pass) {
+      const u = d.prepare('SELECT * FROM users WHERE name=?').get(String(name).trim());
+      if (!u || hashPass(pass, u.salt) !== u.passHash) return null;
+      return { id: u.id, name: u.name, isAdmin: !!u.isAdmin, perms: JSON.parse(u.perms || '{}') };
+    },
+    getSetting(key, dflt = null) {
+      const r = d.prepare('SELECT value FROM settings WHERE key=?').get(key);
+      return r ? JSON.parse(r.value) : dflt;
+    },
+    setSetting(key, value) {
+      d.prepare('INSERT INTO settings(key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value')
+        .run(key, JSON.stringify(value));
     },
     close() { d.close(); }
   };

@@ -55,17 +55,34 @@ function openDbOrRecover() {
   }
 }
 
-function writeAutoBackup() {
+function backupSettings() {
+  return {
+    mode: db.getSetting('backupMode', 'quit'),      // quit | daily | weekly
+    dir: db.getSetting('backupDir', '') || backupsDir(),
+    keep: db.getSetting('backupKeep', 30),
+    last: db.getSetting('backupLast', '')
+  };
+}
+
+function writeAutoBackup(force = false) {
   try {
-    if (!db) return;
+    if (!db) return false;
+    const s = backupSettings();
+    if (!force) {
+      const age = s.last ? Date.now() - new Date(s.last).getTime() : Infinity;
+      if (s.mode === 'daily' && age < 24 * 3600e3) return false;
+      if (s.mode === 'weekly' && age < 7 * 24 * 3600e3) return false;
+    }
     const data = db.getAll();
-    if (!data.workers.length && !data.projects.length && !data.logs.length && !data.payments.length) return;
-    fs.mkdirSync(backupsDir(), { recursive: true });
+    if (!data.workers.length && !data.projects.length && !data.logs.length && !data.payments.length) return false;
+    fs.mkdirSync(s.dir, { recursive: true });
     const ts = new Date().toISOString().replace(/[:.]/g, '-');
-    fs.writeFileSync(path.join(backupsDir(), `backup-${ts}.json`), JSON.stringify(data, null, 2));
-    const files = fs.readdirSync(backupsDir()).filter(f => f.endsWith('.json')).sort();
-    for (const f of files.slice(0, Math.max(0, files.length - 30))) fs.rmSync(path.join(backupsDir(), f));
-  } catch {}
+    fs.writeFileSync(path.join(s.dir, `backup-${ts}.json`), JSON.stringify(data, null, 2));
+    db.setSetting('backupLast', new Date().toISOString());
+    const files = fs.readdirSync(s.dir).filter(f => f.startsWith('backup-') && f.endsWith('.json')).sort();
+    for (const f of files.slice(0, Math.max(0, files.length - s.keep))) fs.rmSync(path.join(s.dir, f));
+    return true;
+  } catch { return false; }
 }
 
 function loadState() {
@@ -160,6 +177,54 @@ app.whenReady().then(() => {
   ipcMain.handle('openPhoto', (e, name) => { if (name && fs.existsSync(photoFile(name))) shell.openPath(photoFile(name)); });
   ipcMain.handle('resetAll', () => db.resetAll());
   ipcMain.handle('importAll', (e, data) => db.importAll(data));
+
+  // ---- auth ----
+  ipcMain.handle('authState', () => ({
+    needsSetup: db.userCount() === 0,
+    names: db.listUsers().map(u => u.name)
+  }));
+  ipcMain.handle('setupAdmin', (e, { name, pass }) => {
+    if (db.userCount() > 0) return null;
+    const id = crypto.randomUUID();
+    db.addUser({ id, name, pass, isAdmin: true, perms: {} });
+    return db.login(name, pass);
+  });
+  ipcMain.handle('login', (e, { name, pass }) => db.login(name, pass));
+  ipcMain.handle('listUsers', () => db.listUsers());
+  ipcMain.handle('addUser', (e, u) => db.addUser(u));
+  ipcMain.handle('updateUser', (e, u) => db.updateUser(u));
+  ipcMain.handle('deleteUser', (e, id) => {
+    try { db.deleteUser(id); return true; } catch { return false; }
+  });
+
+  // ---- backup settings ----
+  ipcMain.handle('getBackupSettings', () => backupSettings());
+  ipcMain.handle('setBackupSettings', (e, s) => {
+    if (s.mode) db.setSetting('backupMode', s.mode);
+    if (s.keep) db.setSetting('backupKeep', Number(s.keep) || 30);
+    db.setSetting('backupDir', s.dir || '');
+    return backupSettings();
+  });
+  ipcMain.handle('pickBackupDir', async () => {
+    const r = await dialog.showOpenDialog(win, { properties: ['openDirectory', 'createDirectory'] });
+    return r.canceled || !r.filePaths.length ? null : r.filePaths[0];
+  });
+  ipcMain.handle('backupNow', () => writeAutoBackup(true));
+  ipcMain.handle('listBackups', () => {
+    try {
+      const s = backupSettings();
+      return fs.readdirSync(s.dir).filter(f => f.startsWith('backup-') && f.endsWith('.json')).sort().reverse()
+        .slice(0, 15).map(f => ({ file: f, path: path.join(s.dir, f) }));
+    } catch { return []; }
+  });
+  ipcMain.handle('restoreBackupFile', (e, p) => {
+    try {
+      const data = JSON.parse(fs.readFileSync(p, 'utf8'));
+      if (!data || !Array.isArray(data.workers)) throw new Error('bad');
+      db.importAll(data);
+      return db.getAll();
+    } catch { return null; }
+  });
 
   ipcMain.handle('exportBackup', async () => {
     const r = await dialog.showSaveDialog(win, {

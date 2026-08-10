@@ -108,5 +108,39 @@ assert.strictEqual(mw.name, 'قديم', 'migration keeps old data');
 migrated.addProjectPayment({ id: uuid(), projectId: 'p', date: '2026-01-01', amount: 1, note: '' });
 migrated.close();
 
+// v1.3: users + auth
+assert.strictEqual(db.userCount(), 0, 'no users initially');
+const admin = { id: uuid(), name: 'المدير', pass: 'secret123', isAdmin: true, perms: {} };
+db.addUser(admin);
+assert.strictEqual(db.login('المدير', 'wrong'), null, 'wrong password rejected');
+const logged = db.login('المدير', 'secret123');
+assert.strictEqual(logged.isAdmin, true, 'admin login works');
+const partner = { id: uuid(), name: 'شريك', pass: 'p1', isAdmin: false, perms: { logs: true, money: false } };
+db.addUser(partner);
+assert.deepStrictEqual(db.login('شريك', 'p1').perms, { logs: true, money: false }, 'perms round-trip');
+db.updateUser({ id: partner.id, perms: { logs: true, money: true } });
+assert.strictEqual(db.login('شريك', 'p1').perms.money, true, 'perms update, password kept');
+db.updateUser({ id: partner.id, pass: 'p2' });
+assert.strictEqual(db.login('شريك', 'p1'), null, 'old password dead after change');
+assert.ok(db.login('شريك', 'p2'), 'new password works');
+let threw = false;
+try { db.deleteUser(admin.id); } catch { threw = true; }
+assert.ok(threw, 'cannot delete last admin');
+db.deleteUser(partner.id);
+assert.strictEqual(db.userCount(), 1, 'partner deleted');
+
+// settings round-trip
+db.setSetting('backupMode', 'daily');
+db.setSetting('backupKeep', 10);
+assert.strictEqual(db.getSetting('backupMode'), 'daily', 'setting stored');
+db.setSetting('backupMode', 'weekly');
+assert.strictEqual(db.getSetting('backupMode'), 'weekly', 'setting upsert');
+assert.strictEqual(db.getSetting('missing', 'dflt'), 'dflt', 'setting default');
+
+// users/settings survive resetAll (accounts are not business data)
+db.resetAll();
+assert.strictEqual(db.userCount(), 1, 'users survive data reset');
+assert.strictEqual(db.getSetting('backupMode'), 'weekly', 'settings survive data reset');
+
 db.close();
 console.log('ALL TESTS PASSED');

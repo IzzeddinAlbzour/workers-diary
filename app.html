@@ -125,6 +125,23 @@ nav button.active::before{content:"";position:absolute;top:0;width:26px;height:3
 #toast .t{background:var(--navy);color:#fff;font-weight:700;font-size:14px;padding:11px 18px;border-radius:12px;box-shadow:0 8px 24px rgba(8,17,34,.3);display:flex;gap:8px;align-items:center;animation:toastin .3s var(--ease)}
 @keyframes toastin{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
 
+/* ---------- auth ---------- */
+#auth{position:fixed;inset:0;background:linear-gradient(160deg,var(--navy) 0%,var(--navy-2) 100%);z-index:50;display:grid;place-items:center;padding:20px}
+.authbox{width:100%;max-width:400px;background:var(--bg);border-radius:20px;padding:26px;box-shadow:0 24px 60px rgba(0,0,0,.4);animation:sheetin .3s var(--ease)}
+.authbox .amark{width:52px;height:52px;background:#f7b500;border-radius:15px;display:grid;place-items:center;color:var(--navy);margin:0 auto 12px}
+.authbox h2{margin:0 0 4px;text-align:center;font-size:20px;font-weight:800}
+.authbox .sub{text-align:center;color:var(--ink-3);font-size:13px;margin:0 0 14px}
+.userpick{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin-bottom:6px}
+.userpick button{background:#fff;border:1.5px solid #d9e1ee;border-radius:12px;padding:10px 16px;font-weight:700;transition:all .12s}
+.userpick button:hover{border-color:var(--blue);color:var(--blue)}
+.userpick button.sel{background:var(--blue);border-color:var(--blue);color:#fff}
+.permrow{display:flex;align-items:center;gap:9px;padding:8px 2px;font-size:14px;font-weight:600;color:var(--ink-2)}
+.permrow input{width:17px;height:17px;accent-color:var(--blue)}
+.userline .badge-admin{background:#f7b500;color:var(--navy);border-radius:8px;padding:2px 8px;font-size:11px;font-weight:800}
+.logoutbtn{position:absolute;top:18px;left:18px;color:#b9c6dd;width:34px;height:34px;border-radius:10px;display:grid;place-items:center;z-index:6}
+.logoutbtn:hover{background:rgba(255,255,255,.12);color:#fff}
+@media(min-width:900px){.logoutbtn{position:fixed;left:auto;right:190px;top:24px}}
+
 /* ---------- photos ---------- */
 .photobox{border:1.5px dashed #c9d4e5;border-radius:11px;min-height:96px;display:flex;align-items:center;justify-content:center;background:#fff;overflow:hidden;position:relative}
 .photobox img{width:100%;height:112px;object-fit:cover;cursor:pointer;display:block}
@@ -165,6 +182,7 @@ nav button.active::before{content:"";position:absolute;top:0;width:26px;height:3
 <body>
 <div class="app">
 <header>
+ <button class="logoutbtn" id="logoutBtn" style="display:none" title="تسجيل الخروج" onclick="logout()"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4h-8v16h8"/><path d="M10 12h11"/><path d="m17.5 8.5 3.5 3.5-3.5 3.5"/></svg></button>
  <div class="headline">
   <span class="mark"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a7 7 0 0 0-7 7v2h14v-2a7 7 0 0 0-7-7Z"/><path d="M3 15h18"/><path d="M12 3v4"/></svg></span>
   <div><h1 id="title">يوميات العمال</h1><p id="subtitle">إدارة العمال والمشاريع والحسابات</p></div>
@@ -198,21 +216,34 @@ const ic = {
  warn: d=>I('<path d="M12 3.5 22 20H2Z"/><path d="M12 10v4"/><path d="M12 17.2v.1"/>',d),
  check: d=>I('<path d="m4.5 12.5 5 5L19.5 7"/>',d),
  x: d=>I('<path d="M6 6l12 12"/><path d="M18 6 6 18"/>',d),
- cal: d=>I('<rect x="4" y="5" width="16" height="16" rx="2.5"/><path d="M4 10h16"/><path d="M8 3v4"/><path d="M16 3v4"/>',d)
+ cal: d=>I('<rect x="4" y="5" width="16" height="16" rx="2.5"/><path d="M4 10h16"/><path d="M8 3v4"/><path d="M16 3v4"/>',d),
+ gear: d=>I('<circle cx="12" cy="12" r="3.2"/><path d="M12 2.8v2.7M12 18.5v2.7M2.8 12h2.7M18.5 12h2.7M5.5 5.5l1.9 1.9M16.6 16.6l1.9 1.9M18.5 5.5l-1.9 1.9M7.4 16.6l-1.9 1.9"/>',d),
+ lock: d=>I('<rect x="5" y="10" width="14" height="10" rx="2.5"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/>',d)
 };
 
 const PAGES=[
- {id:'home', title:'يوميات العمال', icon:ic.home},
- {id:'workers', title:'العمال', icon:ic.users},
- {id:'projects', title:'المشاريع', icon:ic.crane},
- {id:'reports', title:'التقارير', icon:ic.chart},
- {id:'accounts', title:'الحسابات', icon:ic.wallet}
+ {id:'home', title:'يوميات العمال', icon:ic.home, ok:()=>true},
+ {id:'workers', title:'العمال', icon:ic.users, ok:()=>true},
+ {id:'projects', title:'المشاريع', icon:ic.crane, ok:()=>true},
+ {id:'reports', title:'التقارير', icon:ic.chart, ok:()=>can('money')},
+ {id:'accounts', title:'الحسابات', icon:ic.wallet, ok:()=>can('money')},
+ {id:'settings', title:'الإعدادات', icon:ic.gear, ok:()=>CU&&CU.isAdmin}
 ];
-const LABELS={home:'الرئيسية',workers:'العمال',projects:'المشاريع',reports:'التقارير',accounts:'الحسابات'};
+const LABELS={home:'الرئيسية',workers:'العمال',projects:'المشاريع',reports:'التقارير',accounts:'الحسابات',settings:'الإعدادات'};
 
 const KEY='workersDiary_v1';
 let db={workers:[],projects:[],logs:[],payments:[],projectPayments:[]};
 let page='home';
+let CU=null; // current user {id,name,isAdmin,perms}
+const can=k=>!!CU&&(CU.isAdmin||!!CU.perms[k]);
+const PERMS=[
+ ['logs','تسجيل يوميات ودفعات'],
+ ['editDelete','تعديل وحذف السجلات'],
+ ['money','رؤية الحسابات والأرصدة'],
+ ['private','بيانات العمال الخاصة (هوية/بنك/صور)'],
+ ['projPay','دفعات المشاريع المقبوضة'],
+ ['manage','إدارة العمال والمشاريع']
+];
 const $=s=>document.querySelector(s);
 const money=n=>`<span class="num">${Number(n||0).toLocaleString('ar-EG',{maximumFractionDigits:2})} ₪</span>`;
 const today=()=>new Date().toISOString().slice(0,10);
@@ -236,35 +267,42 @@ function toast(msg){
 function emptyState(icon,title,hint,btn){
  return `<div class="empty"><div class="eic">${icon(26)}</div><b>${title}</b><p>${hint}</p>${btn||''}</div>`;
 }
+function buildNav(){
+ $('#nav').innerHTML=PAGES.filter(p=>p.ok()).map(p=>`<button data-page="${p.id}">${p.icon(21)}${LABELS[p.id]}</button>`).join('');
+ document.querySelectorAll('#nav button').forEach(b=>b.onclick=()=>{page=b.dataset.page;render()});
+}
 function render(){
- $('#title').textContent=PAGES.find(p=>p.id===page).title;
- $('#subtitle').textContent='إدارة العمال والمشاريع والحسابات';
+ const pg=PAGES.find(p=>p.id===page);
+ if(!pg||!pg.ok()){page='home';return render()}
+ $('#title').textContent=pg.title;
+ $('#subtitle').textContent=CU?`المستخدم: ${CU.name}`:'إدارة العمال والمشاريع والحسابات';
  document.querySelectorAll('#nav button').forEach(b=>b.classList.toggle('active',b.dataset.page===page));
- ({home,workers,projects,reports,accounts})[page]();
+ ({home,workers,projects,reports,accounts,settings})[page]();
  const w=$('#pagewrap'); w.style.animation='none'; void w.offsetWidth; w.style.animation='';
 }
 
 /* ---------- pages ---------- */
 function home(){
  const s=stats();
+ const acts=[
+  can('logs')?`<button class="btn primary" onclick="newLog()">${ic.plus(17)} تسجيل يومية</button>`:'',
+  can('manage')?`<button class="btn secondary" onclick="newWorker()">${ic.users(17)} إضافة عامل</button>`:'',
+  can('manage')?`<button class="btn secondary" onclick="newProject()">${ic.crane(17)} إضافة مشروع</button>`:'',
+  can('logs')?`<button class="btn success" onclick="newPayment()">${ic.pay(17)} تسجيل دفعة</button>`:''
+ ].filter(Boolean).join('');
  $('#main').innerHTML=`
  <div class="grid">
   <div class="card stat"><span class="ic tint-blue">${ic.users(20)}</span><b class="num">${s.workers}</b><span class="lbl">عدد العمال</span></div>
   <div class="card stat"><span class="ic tint-green">${ic.cal(20)}</span><b class="num">${db.logs.filter(x=>x.date===today()).length}</b><span class="lbl">يوميات اليوم</span></div>
   <div class="card stat"><span class="ic tint-orange">${ic.crane(20)}</span><b class="num">${s.projects}</b><span class="lbl">المشاريع</span></div>
-  <div class="card stat"><span class="ic tint-purple">${ic.wallet(20)}</span><b>${money(s.balance)}</b><span class="lbl">الرصيد المستحق</span></div>
+  ${can('money')?`<div class="card stat"><span class="ic tint-purple">${ic.wallet(20)}</span><b>${money(s.balance)}</b><span class="lbl">الرصيد المستحق</span></div>`:''}
  </div>
- <div class="card"><h3>إجراءات سريعة</h3><div class="actions">
- <button class="btn primary" onclick="newLog()">${ic.plus(17)} تسجيل يومية</button>
- <button class="btn secondary" onclick="newWorker()">${ic.users(17)} إضافة عامل</button>
- <button class="btn secondary" onclick="newProject()">${ic.crane(17)} إضافة مشروع</button>
- <button class="btn success" onclick="newPayment()">${ic.pay(17)} تسجيل دفعة</button>
- </div></div>
+ ${acts?`<div class="card"><h3>إجراءات سريعة</h3><div class="actions">${acts}</div></div>`:''}
  <div class="card"><h3>آخر اليوميات</h3>${recentLogs()}</div>`;
 }
 function logRow(l,withActions){
  return `<div class="item"><div class="lead"><div class="tx"><h3>${esc(workerName(l.workerId))}</h3><small>${esc(projectName(l.projectId))} • <span class="num">${esc(l.date)}</span> • <span class="num">${esc(l.hours||0)}</span> ساعة${l.type?' • '+esc(l.type):''}</small></div></div>
- <div class="rowicons"><span class="amount">${money(l.wage)}</span>${withActions?`
+ <div class="rowicons"><span class="amount">${money(l.wage)}</span>${withActions&&can('editDelete')?`
   <button class="iconbtn" title="تعديل" onclick="editLog('${l.id}')">${ic.edit(16)}</button>
   <button class="iconbtn del" title="حذف" onclick="delLog('${l.id}')">${ic.trash(16)}</button>`:''}
  </div></div>`;
@@ -275,7 +313,7 @@ function recentLogs(){
  return arr.map(l=>logRow(l,true)).join('');
 }
 function workers(){
- $('#main').innerHTML=`<div class="toolbar"><div class="search">${ic.search(17)}<input id="ws" placeholder="بحث بالاسم أو رقم الهاتف..." oninput="filterWorkers()"></div><button class="btn primary" onclick="newWorker()">${ic.plus(17)}</button></div><div id="workerList"></div>`;
+ $('#main').innerHTML=`<div class="toolbar"><div class="search">${ic.search(17)}<input id="ws" placeholder="بحث بالاسم أو رقم الهاتف..." oninput="filterWorkers()"></div>${can('manage')?`<button class="btn primary" onclick="newWorker()">${ic.plus(17)}</button>`:''}</div><div id="workerList"></div>`;
  filterWorkers();
 }
 function filterWorkers(){
@@ -284,38 +322,38 @@ function filterWorkers(){
  $('#workerList').innerHTML=list.length?list.map(w=>{
   const earned=db.logs.filter(l=>l.workerId===w.id).reduce((a,l)=>a+Number(l.wage||0),0);
   const paid=db.payments.filter(p=>p.workerId===w.id).reduce((a,p)=>a+Number(p.amount||0),0);
-  return `<div class="card"><div class="item"><div class="lead"><span class="avatar">${esc(w.name.trim().charAt(0))}</span><div class="tx"><h3>${esc(w.name)}</h3><small>${esc(w.job||'عامل')}${w.phone?' • <span class="num">'+esc(w.phone)+'</span>':''}${w.idNumber?' • هوية <span class="num">'+esc(w.idNumber)+'</span>':''}</small></div></div>
-   <div class="rowicons">
+  return `<div class="card"><div class="item"><div class="lead"><span class="avatar">${esc(w.name.trim().charAt(0))}</span><div class="tx"><h3>${esc(w.name)}</h3><small>${esc(w.job||'عامل')}${w.phone?' • <span class="num">'+esc(w.phone)+'</span>':''}${can('private')&&w.idNumber?' • هوية <span class="num">'+esc(w.idNumber)+'</span>':''}</small></div></div>
+   <div class="rowicons">${can('manage')?`
     <button class="iconbtn" title="تعديل" onclick="editWorker('${w.id}')">${ic.edit(16)}</button>
-    <button class="iconbtn del" title="حذف" onclick="delWorker('${w.id}')">${ic.trash(16)}</button>
+    <button class="iconbtn del" title="حذف" onclick="delWorker('${w.id}')">${ic.trash(16)}</button>`:''}
    </div></div>
-   <div class="row"><div><span class="muted">المستحق</span><br><b style="color:var(--green)">${money(earned)}</b></div><div><span class="muted">السلف/الدفعات</span><br><b style="color:var(--orange)">${money(paid)}</b></div></div><hr>
-   <div class="item" style="padding:0;border:0"><b>الرصيد: ${money(earned-paid)}</b><button class="btn secondary" onclick="newLog('${w.id}')">${ic.plus(15)} يومية</button></div></div>`
+   ${can('money')?`<div class="row"><div><span class="muted">المستحق</span><br><b style="color:var(--green)">${money(earned)}</b></div><div><span class="muted">السلف/الدفعات</span><br><b style="color:var(--orange)">${money(paid)}</b></div></div><hr>`:''}
+   <div class="item" style="padding:0;border:0">${can('money')?`<b>الرصيد: ${money(earned-paid)}</b>`:'<span></span>'}${can('logs')?`<button class="btn secondary" onclick="newLog('${w.id}')">${ic.plus(15)} يومية</button>`:''}</div></div>`
  }).join(''):(db.workers.length
    ?`<div class="card">${emptyState(ic.search,'لا نتائج مطابقة','جرّب اسمًا أو رقمًا آخر')}</div>`
    :`<div class="card">${emptyState(ic.users,'لا يوجد عمال بعد','أضف أول عامل لبدء تسجيل اليوميات',`<button class="btn primary" onclick="newWorker()">${ic.plus(16)} إضافة عامل</button>`)}</div>`);
 }
 function projects(){
- $('#main').innerHTML=`<div class="toolbar"><div style="flex:1"></div><button class="btn primary" onclick="newProject()">${ic.plus(16)} مشروع</button></div><div id="projectList"></div>`;
+ $('#main').innerHTML=`<div class="toolbar"><div style="flex:1"></div>${can('manage')?`<button class="btn primary" onclick="newProject()">${ic.plus(16)} مشروع</button>`:''}</div><div id="projectList"></div>`;
  $('#projectList').innerHTML=db.projects.length?db.projects.map(p=>{
   const logs=db.logs.filter(l=>l.projectId===p.id), total=logs.reduce((a,l)=>a+Number(l.wage||0),0);
   const pays=db.projectPayments.filter(x=>x.projectId===p.id);
   const received=pays.reduce((a,x)=>a+Number(x.amount||0),0);
   const byW={}; logs.forEach(l=>{byW[l.workerId]=(byW[l.workerId]||0)+1});
   const chips=Object.entries(byW).map(([wid,n])=>`<span class="chip">${esc(workerName(wid))} · <span class="num">${n}</span></span>`).join('');
-  const payRows=pays.slice(-3).reverse().map(x=>`<div class="item"><div class="tx"><small><span class="num">${esc(x.date)}</span> • ${esc(x.note||'دفعة')}</small></div>
-   <div class="rowicons"><b style="color:var(--green)">${money(x.amount)}</b>
+  const payRows=can('projPay')?pays.slice(-3).reverse().map(x=>`<div class="item"><div class="tx"><small><span class="num">${esc(x.date)}</span> • ${esc(x.note||'دفعة')}</small></div>
+   <div class="rowicons"><b style="color:var(--green)">${money(x.amount)}</b>${can('editDelete')?`
     <button class="iconbtn" title="تعديل" onclick="editProjectPayment('${x.id}')">${ic.edit(16)}</button>
-    <button class="iconbtn del" title="حذف" onclick="delProjectPayment('${x.id}')">${ic.trash(16)}</button>
-   </div></div>`).join('');
+    <button class="iconbtn del" title="حذف" onclick="delProjectPayment('${x.id}')">${ic.trash(16)}</button>`:''}
+   </div></div>`).join(''):'';
   return `<div class="card"><div class="item" style="padding-top:0"><div class="lead"><span class="avatar tint-orange">${ic.crane(19)}</span><div class="tx"><h3>${esc(p.name)}</h3><small>${esc(p.location||'')}${p.start?' • <span class="num">'+esc(p.start)+'</span>':''}</small></div></div>
-   <div class="rowicons">
+   <div class="rowicons">${can('manage')?`
     <button class="iconbtn" title="تعديل" onclick="editProject('${p.id}')">${ic.edit(16)}</button>
-    <button class="iconbtn del" title="حذف" onclick="delProject('${p.id}')">${ic.trash(16)}</button>
+    <button class="iconbtn del" title="حذف" onclick="delProject('${p.id}')">${ic.trash(16)}</button>`:''}
    </div></div>
-   <div class="row3"><div><span class="muted">اليوميات</span><br><b class="num">${logs.length}</b></div><div><span class="muted">أجور مسجلة</span><br><b>${money(total)}</b></div><div><span class="muted">دفعات مقبوضة</span><br><b style="color:var(--green)">${money(received)}</b></div></div>
+   <div class="row3"><div><span class="muted">اليوميات</span><br><b class="num">${logs.length}</b></div>${can('money')?`<div><span class="muted">أجور مسجلة</span><br><b>${money(total)}</b></div>`:'<div></div>'}${can('projPay')?`<div><span class="muted">دفعات مقبوضة</span><br><b style="color:var(--green)">${money(received)}</b></div>`:'<div></div>'}</div>
    ${chips?`<hr><span class="muted">العمال في المشروع</span><div style="margin-top:5px">${chips}</div>`:''}
-   <hr>${payRows||''}<button class="btn success wide" style="margin-top:${payRows?'10px':'0'}" onclick="newProjectPayment('${p.id}')">${ic.plus(15)} دفعة مقبوضة</button></div>`;
+   ${can('projPay')?`<hr>${payRows||''}<button class="btn success wide" style="margin-top:${payRows?'10px':'0'}" onclick="newProjectPayment('${p.id}')">${ic.plus(15)} دفعة مقبوضة</button>`:''}</div>`;
  }).join(''):`<div class="card">${emptyState(ic.crane,'لا توجد مشاريع بعد','أضف مشروعًا لربط اليوميات به',`<button class="btn primary" onclick="newProject()">${ic.plus(16)} إضافة مشروع</button>`)}</div>`;
 }
 function reports(){
@@ -325,19 +363,144 @@ function reports(){
  <div><span class="muted">الأيام</span><br><b class="num">${db.logs.length}</b></div><div><span class="muted">الساعات</span><br><b class="num">${db.logs.reduce((a,l)=>a+Number(l.hours||0),0)}</b></div>
  <div><span class="muted">المستحقات</span><br><b style="color:var(--green)">${money(s.earned)}</b></div><div><span class="muted">المدفوع</span><br><b style="color:var(--orange)">${money(s.paid)}</b></div></div></div>
  <div class="card"><h3>كشف العمال</h3>${byWorker.length?byWorker.map(x=>`<div class="item"><div class="lead"><span class="avatar">${esc(x.w.name.trim().charAt(0))}</span><div class="tx"><b>${esc(x.w.name)}</b><br><small><span class="num">${x.days}</span> يوم • <span class="num">${x.hours}</span> ساعة</small></div></div><div style="text-align:left"><b style="color:var(--green)">${money(x.earned)}</b><br><small>صافي ${money(x.earned-x.paid)}</small></div></div>`).join(''):emptyState(ic.chart,'لا توجد بيانات','سجّل يوميات ودفعات لعرض الكشف')}</div>
- <div class="actions"><button class="btn primary" onclick="window.print()">${ic.print(17)} طباعة</button><button class="btn secondary" onclick="exportData()">${ic.down(17)} تصدير البيانات</button></div>`;
+ <div class="actions"><button class="btn primary" onclick="window.print()">${ic.print(17)} طباعة</button>${CU&&CU.isAdmin?`<button class="btn secondary" onclick="exportData()">${ic.down(17)} تصدير البيانات</button>`:''}</div>`;
 }
 function accounts(){
  const s=stats();
  $('#main').innerHTML=`<div class="grid"><div class="card stat"><span class="ic tint-green">${ic.chart(20)}</span><b style="color:var(--green)">${money(s.earned)}</b><span class="lbl">إجمالي المستحقات</span></div><div class="card stat"><span class="ic tint-orange">${ic.pay(20)}</span><b style="color:var(--orange)">${money(s.paid)}</b><span class="lbl">إجمالي المدفوع</span></div></div>
  <div class="card"><h3>الرصيد الإجمالي</h3><div class="total">${money(s.balance)}</div><p class="muted" style="margin:4px 0 12px">المستحقات المسجلة ناقص الدفعات والسلف.</p><button class="btn success wide" onclick="newPayment()">${ic.plus(16)} تسجيل دفعة / سلفة</button></div>
  <div class="card"><h3>آخر الدفعات</h3>${db.payments.slice(-10).reverse().map(p=>`<div class="item"><div class="lead"><div class="tx"><b>${esc(workerName(p.workerId))}</b><br><small><span class="num">${esc(p.date)}</span> • ${esc(p.note||'دفعة')}</small></div></div>
-  <div class="rowicons"><b style="color:var(--orange)">${money(p.amount)}</b>
+  <div class="rowicons"><b style="color:var(--orange)">${money(p.amount)}</b>${can('editDelete')?`
    <button class="iconbtn" title="تعديل" onclick="editPayment('${p.id}')">${ic.edit(16)}</button>
-   <button class="iconbtn del" title="حذف" onclick="delPayment('${p.id}')">${ic.trash(16)}</button>
+   <button class="iconbtn del" title="حذف" onclick="delPayment('${p.id}')">${ic.trash(16)}</button>`:''}
   </div></div>`).join('')||emptyState(ic.pay,'لا توجد دفعات','سجّل دفعة أو سلفة لتظهر هنا')}</div>
- <div class="card"><h3>النسخ الاحتياطي</h3><div class="actions"><button class="btn secondary" onclick="exportData()">${ic.down(16)} تصدير</button><button class="btn secondary" onclick="restoreData()">${ic.up(16)} استعادة</button></div></div>
- <div class="card"><button class="btn danger wide" onclick="resetData()">${ic.warn(17)} حذف كل البيانات</button></div>`;
+ ${CU&&CU.isAdmin?`<div class="card"><h3>النسخ الاحتياطي</h3><div class="actions"><button class="btn secondary" onclick="exportData()">${ic.down(16)} تصدير</button><button class="btn secondary" onclick="restoreData()">${ic.up(16)} استعادة</button></div></div>
+ <div class="card"><button class="btn danger wide" onclick="resetData()">${ic.warn(17)} حذف كل البيانات</button></div>`:''}`;
+}
+
+/* ---------- settings page (admin) ---------- */
+async function settings(){
+ const users=await window.api.listUsers();
+ const bs=await window.api.getBackupSettings();
+ const backups=await window.api.listBackups();
+ $('#main').innerHTML=`
+ <div class="card"><h3>المستخدمون</h3>
+  ${users.map(u=>`<div class="item userline"><div class="lead"><span class="avatar">${u.isAdmin?ic.lock(17):esc(u.name.trim().charAt(0))}</span><div class="tx"><b>${esc(u.name)}</b> ${u.isAdmin?'<span class="badge-admin">مدير</span>':''}<br><small>${u.isAdmin?'كل الصلاحيات':PERMS.filter(([k])=>u.perms[k]).map(([,l])=>l.split(' ')[0]).join('، ')||'بدون صلاحيات'}</small></div></div>
+   <div class="rowicons">
+    <button class="iconbtn" title="تعديل" onclick="editUser('${u.id}')">${ic.edit(16)}</button>
+    ${u.id!==CU.id?`<button class="iconbtn del" title="حذف" onclick="delUser('${u.id}')">${ic.trash(16)}</button>`:''}
+   </div></div>`).join('')}
+  <button class="btn primary wide" style="margin-top:10px" onclick="newUser()">${ic.plus(16)} إضافة مستخدم</button></div>
+ <div class="card"><h3>النسخ الاحتياطي التلقائي</h3>
+  ${F('bmode','متى يتم النسخ',`<select id="bmode"><option value="quit" ${bs.mode==='quit'?'selected':''}>عند كل إغلاق للبرنامج</option><option value="daily" ${bs.mode==='daily'?'selected':''}>مرة يومياً</option><option value="weekly" ${bs.mode==='weekly'?'selected':''}>مرة أسبوعياً</option></select>`)}
+  ${F('bkeep','عدد النسخ المحفوظة',`<input id="bkeep" type="text" inputmode="numeric" oninput="digits(this)" value="${bs.keep}">`)}
+  <div class="field"><label>مجلد النسخ</label><div class="item" style="padding:6px 0;border:0"><small class="num" dir="ltr" style="overflow:hidden;text-overflow:ellipsis">${esc(bs.dir)}</small><button class="btn secondary" onclick="pickBackupDir()">تغيير</button></div></div>
+  <div class="actions"><button class="btn primary" onclick="saveBackupSettings()">${ic.check(16)} حفظ الإعدادات</button><button class="btn success" onclick="backupNow()">${ic.down(16)} نسخ احتياطي الآن</button></div>
+  <p class="muted" style="margin:10px 0 0">آخر نسخة: ${bs.last?`<span class="num">${esc(bs.last.slice(0,16).replace('T',' '))}</span>`:'لا يوجد بعد'}</p></div>
+ <div class="card"><h3>آخر النسخ</h3>${backups.length?backups.map(b=>`<div class="item"><small class="num" dir="ltr">${esc(b.file)}</small><button class="btn secondary" onclick="restoreFromFile('${esc(b.path).replace(/\\/g,'\\\\')}')">استعادة</button></div>`).join(''):'<div class="empty">لا توجد نسخ بعد</div>'}</div>
+ <div class="card"><button class="btn danger wide" onclick="logout()">تسجيل الخروج</button></div>`;
+}
+let _pickedDir=null;
+async function pickBackupDir(){const d=await window.api.pickBackupDir();if(d){_pickedDir=d;render()}}
+async function saveBackupSettings(){
+ await window.api.setBackupSettings({mode:$('#bmode').value,keep:Number($('#bkeep').value)||30,dir:_pickedDir||undefined});
+ _pickedDir=null;render();toast('تم حفظ إعدادات النسخ');
+}
+async function backupNow(){const ok=await window.api.backupNow();toast(ok?'تم إنشاء نسخة احتياطية':'لا توجد بيانات للنسخ');render()}
+function restoreFromFile(p){
+ confirmBox('استعادة نسخة احتياطية','سيتم استبدال جميع البيانات الحالية بمحتوى هذه النسخة.',async()=>{
+  const data=await window.api.restoreBackupFile(p);
+  if(data){db=data;render();toast('تمت الاستعادة بنجاح')}else toast('فشلت الاستعادة — ملف غير صالح');
+ },'استعادة');
+}
+
+/* ---------- users CRUD ---------- */
+function userForm(u={}){
+ return F('un','اسم المستخدم *',`<input id="un" value="${esc(u.name||'')}">`)
+ +F('up',u.id?'كلمة المرور (اتركها فارغة للإبقاء عليها)':'كلمة المرور *',`<input id="up" type="password">`)
+ +`<div class="field"><label>الصلاحيات</label>
+   <div class="permrow"><input type="checkbox" id="uadmin" ${u.isAdmin?'checked':''} onchange="document.getElementById('permlist').style.opacity=this.checked?.4:1"> <b>مدير (كل الصلاحيات + إدارة المستخدمين)</b></div>
+   <div id="permlist" style="opacity:${u.isAdmin?.4:1}">${PERMS.map(([k,l])=>`<div class="permrow"><input type="checkbox" id="perm-${k}" ${u.perms&&u.perms[k]?'checked':''}> ${l}</div>`).join('')}</div></div>`;
+}
+function readUserForm(existing){
+ const name=$('#un').value.trim();
+ if(!name)return fieldErr('un','اكتب اسم المستخدم'),null;
+ const pass=$('#up').value;
+ if(!existing&&!pass)return fieldErr('up','اكتب كلمة المرور'),null;
+ const perms={};PERMS.forEach(([k])=>perms[k]=$('#perm-'+k).checked);
+ return {name,pass:pass||undefined,isAdmin:$('#uadmin').checked,perms};
+}
+function newUser(){
+ modal('إضافة مستخدم',userForm(),()=>{
+  const v=readUserForm(false);if(!v)return false;
+  window.api.addUser({id:crypto.randomUUID(),...v}).then(()=>render());
+  toast('تمت إضافة المستخدم');return true});
+}
+async function editUser(id){
+ const u=(await window.api.listUsers()).find(x=>x.id===id);
+ modal('تعديل مستخدم',userForm(u),()=>{
+  const v=readUserForm(true);if(!v)return false;
+  window.api.updateUser({id,...v}).then(()=>{
+   if(CU.id===id){CU={...CU,name:v.name,isAdmin:v.isAdmin,perms:v.perms};buildNav()}
+   render();
+  });
+  toast('تم حفظ التعديل');return true});
+}
+async function delUser(id){
+ const u=(await window.api.listUsers()).find(x=>x.id===id);
+ confirmBox('حذف مستخدم',`سيتم حذف حساب <b>${esc(u.name)}</b>. لا يؤثر على بيانات العمال والمشاريع.`,async()=>{
+  const ok=await window.api.deleteUser(id);
+  toast(ok?'تم حذف المستخدم':'لا يمكن حذف آخر مدير');render();
+ });
+}
+
+/* ---------- auth ---------- */
+function authScreen(state){
+ const wrap=document.createElement('div');wrap.id='auth';
+ const mark=`<div class="amark"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a7 7 0 0 0-7 7v2h14v-2a7 7 0 0 0-7-7Z"/><path d="M3 15h18"/><path d="M12 3v4"/></svg></div>`;
+ if(state.needsSetup){
+  wrap.innerHTML=`<div class="authbox">${mark}<h2>أهلاً بك في يوميات العمال</h2><p class="sub">أنشئ حساب المدير — يتحكم بكل شيء ويضيف المستخدمين</p>
+   ${F('an','اسمك',`<input id="an">`)}${F('ap','كلمة المرور',`<input id="ap" type="password">`)}${F('ap2','تأكيد كلمة المرور',`<input id="ap2" type="password">`)}
+   <button class="btn primary wide" id="authGo">إنشاء الحساب والدخول</button></div>`;
+ }else{
+  wrap.innerHTML=`<div class="authbox">${mark}<h2>تسجيل الدخول</h2><p class="sub">اختر المستخدم وأدخل كلمة المرور</p>
+   <div class="userpick">${state.names.map(n=>`<button data-n="${esc(n)}">${esc(n)}</button>`).join('')}</div>
+   ${F('ap','كلمة المرور',`<input id="ap" type="password">`)}
+   <button class="btn primary wide" id="authGo">دخول</button></div>`;
+  wrap.querySelectorAll('.userpick button').forEach(b=>b.onclick=()=>{
+   wrap.querySelectorAll('.userpick button').forEach(x=>x.classList.remove('sel'));
+   b.classList.add('sel');$('#ap').focus();
+  });
+  if(state.names.length===1)wrap.querySelector('.userpick button').classList.add('sel');
+ }
+ document.body.appendChild(wrap);
+ const go=async()=>{
+  if(state.needsSetup){
+   if(!$('#an').value.trim())return fieldErr('an','اكتب اسمك');
+   if(!$('#ap').value)return fieldErr('ap','اكتب كلمة المرور');
+   if($('#ap').value!==$('#ap2').value)return fieldErr('ap2','كلمتا المرور غير متطابقتين');
+   const u=await window.api.setupAdmin({name:$('#an').value.trim(),pass:$('#ap').value});
+   if(u)enterApp(u);
+  }else{
+   const sel=wrap.querySelector('.userpick button.sel');
+   if(!sel)return fieldErr('ap','اختر المستخدم أولاً');
+   const u=await window.api.login({name:sel.dataset.n,pass:$('#ap').value});
+   if(!u)return fieldErr('ap','كلمة المرور غير صحيحة');
+   enterApp(u);
+  }
+ };
+ $('#authGo').onclick=go;
+ wrap.addEventListener('keydown',e=>{if(e.key==='Enter')go()});
+ const f=wrap.querySelector('input,button');if(f)f.focus();
+}
+function enterApp(u){
+ CU=u;$('#auth')?.remove();$('#logoutBtn').style.display='';
+ buildNav();page='home';render();
+}
+async function logout(){
+ CU=null;$('#logoutBtn').style.display='none';$('#nav').innerHTML='';$('#main').innerHTML='';
+ $('#title').textContent='يوميات العمال';$('#subtitle').textContent='إدارة العمال والمشاريع والحسابات';
+ authScreen(await window.api.authState());
 }
 
 /* ---------- modal + validation ---------- */
@@ -560,8 +723,6 @@ function resetData(){
 }
 
 /* ---------- boot ---------- */
-$('#nav').innerHTML=PAGES.map(p=>`<button data-page="${p.id}">${p.icon(21)}${LABELS[p.id]}</button>`).join('');
-document.querySelectorAll('#nav button').forEach(b=>b.onclick=()=>{page=b.dataset.page;render()});
 (async()=>{
  db=await window.api.getAll();
  try{
@@ -573,7 +734,7 @@ document.querySelectorAll('#nav button').forEach(b=>b.onclick=()=>{page=b.datase
    localStorage.removeItem(KEY);
   }
  }catch(e){}
- render();
+ authScreen(await window.api.authState());
 })();
 </script>
 </body>

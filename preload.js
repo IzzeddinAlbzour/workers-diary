@@ -25,5 +25,18 @@ contextBridge.exposeInMainWorld('api', {
   resetAll: call('resetAll'),
   importAll: call('importAll'),
   exportBackup: call('exportBackup'),
-  importBackup: call('importBackup')
+  importBackup: call('importBackup'),
+  authState: call('authState'),
+  setupAdmin: call('setupAdmin'),
+  login: call('login'),
+  listUsers: call('listUsers'),
+  addUser: call('addUser'),
+  updateUser: call('updateUser'),
+  deleteUser: call('deleteUser'),
+  getBackupSettings: call('getBackupSettings'),
+  setBackupSettings: call('setBackupSettings'),
+  pickBackupDir: call('pickBackupDir'),
+  backupNow: call('backupNow'),
+  listBackups: call('listBackups'),
+  restoreBackupFile: call('restoreBackupFile')
 });
