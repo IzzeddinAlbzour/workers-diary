@@ -189,6 +189,11 @@ const $=s=>document.querySelector(s);
 const money=n=>`<span class="num">${Number(n||0).toLocaleString('ar-EG',{maximumFractionDigits:2})} ₪</span>`;
 const today=()=>new Date().toISOString().slice(0,10);
 function esc(s){return String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))}
+/* accept Arabic-Indic digits (٠١٢٣ / ۰۱۲۳) and normalize to Latin so Number() works */
+function digits(el){
+ const v=el.value.replace(/[٠-٩]/g,d=>'٠١٢٣٤٥٦٧٨٩'.indexOf(d)).replace(/[۰-۹]/g,d=>'۰۱۲۳۴۵۶۷۸۹'.indexOf(d)).replace(/[٫,]/g,'.').replace(/[^0-9.]/g,'');
+ if(v!==el.value)el.value=v;
+}
 function workerName(id){return db.workers.find(x=>x.id==id)?.name||'غير محدد'}
 function projectName(id){return db.projects.find(x=>x.id==id)?.name||'غير محدد'}
 function stats(){
@@ -327,7 +332,7 @@ function confirmBox(title,body,onYes,yesLabel='حذف'){
 function workerForm(w={}){
  return F('n','اسم العامل *',`<input id="n" value="${esc(w.name||'')}">`)
  +`<div class="row">${F('p','رقم الهاتف',`<input id="p" inputmode="tel" value="${esc(w.phone||'')}">`)}${F('j','المهنة',`<input id="j" placeholder="سباك، كهربائي..." value="${esc(w.job||'')}">`)}</div>`
- +F('w','الأجرة اليومية الافتراضية',`<input id="w" type="number" min="0" value="${w.defaultWage??''}">`);
+ +F('w','الأجرة اليومية الافتراضية',`<input id="w" type="text" inputmode="decimal" oninput="digits(this)" value="${w.defaultWage??''}">`);
 }
 function newWorker(){
  modal('إضافة عامل',workerForm(),()=>{
@@ -385,8 +390,8 @@ function logForm(l={},preWorker=''){
  const propts=db.projects.map(p=>`<option value="${p.id}" ${p.id===l.projectId?'selected':''}>${esc(p.name)}</option>`).join('');
  return F('wi','العامل *',`<select id="wi"><option value="">اختر العامل</option>${opts}</select>`)
  +F('pi','المشروع',`<select id="pi"><option value="">اختر المشروع</option>${propts}</select>`)
- +`<div class="row">${F('dt','التاريخ',`<input id="dt" type="date" value="${esc(l.date||today())}">`)}${F('hr','عدد الساعات',`<input id="hr" type="number" min="0" step=".5" value="${l.hours??8}">`)}</div>`
- +`<div class="row">${F('wg','الأجرة اليومية *',`<input id="wg" type="number" min="0" value="${l.wage??''}">`)}${l.id?'':F('pay','سلفة/دفعة اليوم',`<input id="pay" type="number" min="0" value="0">`)}</div>`
+ +`<div class="row">${F('dt','التاريخ',`<input id="dt" type="date" value="${esc(l.date||today())}">`)}${F('hr','عدد الساعات',`<input id="hr" type="text" inputmode="decimal" oninput="digits(this)" value="${l.hours??8}">`)}</div>`
+ +`<div class="row">${F('wg','الأجرة اليومية *',`<input id="wg" type="text" inputmode="decimal" oninput="digits(this)" value="${l.wage??''}">`)}${l.id?'':F('pay','سلفة/دفعة اليوم',`<input id="pay" type="text" inputmode="decimal" oninput="digits(this)" value="0">`)}</div>`
  +F('type','نوع العمل',`<input id="type" placeholder="سباكة، كهرباء، جبصين..." value="${esc(l.type||'')}">`)
  +F('note','ملاحظات',`<textarea id="note">${esc(l.note||'')}</textarea>`);
 }
@@ -422,7 +427,7 @@ function delLog(id){
 function paymentForm(p={}){
  const opts=db.workers.map(w=>`<option value="${w.id}" ${w.id===p.workerId?'selected':''}>${esc(w.name)}</option>`).join('');
  return F('wi','العامل *',`<select id="wi"><option value="">اختر العامل</option>${opts}</select>`)
- +`<div class="row">${F('am','المبلغ *',`<input id="am" type="number" min="0" value="${p.amount??''}">`)}${F('dt','التاريخ',`<input id="dt" type="date" value="${esc(p.date||today())}">`)}</div>`
+ +`<div class="row">${F('am','المبلغ *',`<input id="am" type="text" inputmode="decimal" oninput="digits(this)" value="${p.amount??''}">`)}${F('dt','التاريخ',`<input id="dt" type="date" value="${esc(p.date||today())}">`)}</div>`
  +F('note','ملاحظات',`<input id="note" placeholder="سلفة، راتب، دفعة..." value="${esc(p.note||'')}">`);
 }
 function newPayment(){
