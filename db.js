@@ -6,7 +6,7 @@ CREATE TABLE IF NOT EXISTS workers(
   id TEXT PRIMARY KEY, name TEXT, phone TEXT, job TEXT, defaultWage REAL
 );
 CREATE TABLE IF NOT EXISTS projects(
-  id TEXT PRIMARY KEY, name TEXT, location TEXT, start TEXT
+  id TEXT PRIMARY KEY, name TEXT, location TEXT, start TEXT, done INTEGER DEFAULT 0
 );
 CREATE TABLE IF NOT EXISTS logs(
   id TEXT PRIMARY KEY, workerId TEXT, projectId TEXT, date TEXT,
@@ -35,6 +35,8 @@ function open(file) {
   const cols = d.prepare('PRAGMA table_info(workers)').all().map(c => c.name);
   for (const c of ['idNumber', 'bankName', 'bankAccount', 'idPhoto', 'permitPhoto'])
     if (!cols.includes(c)) d.exec(`ALTER TABLE workers ADD COLUMN ${c} TEXT DEFAULT ''`);
+  const pcols = d.prepare('PRAGMA table_info(projects)').all().map(c => c.name);
+  if (!pcols.includes('done')) d.exec(`ALTER TABLE projects ADD COLUMN done INTEGER DEFAULT 0`);
 
   const api = {
     getAll() {
@@ -51,8 +53,8 @@ function open(file) {
         .run({ phone: '', job: '', defaultWage: 0, idNumber: '', bankName: '', bankAccount: '', idPhoto: '', permitPhoto: '', ...w });
     },
     addProject(p) {
-      d.prepare('INSERT INTO projects(id,name,location,start) VALUES (@id,@name,@location,@start)')
-        .run({ location: '', start: '', ...p });
+      d.prepare('INSERT INTO projects(id,name,location,start,done) VALUES (@id,@name,@location,@start,@done)')
+        .run({ location: '', start: '', ...p, done: p.done ? 1 : 0 });
     },
     addLog(l) {
       d.prepare('INSERT INTO logs(id,workerId,projectId,date,hours,wage,type,note) VALUES (@id,@workerId,@projectId,@date,@hours,@wage,@type,@note)')
@@ -75,7 +77,8 @@ function open(file) {
         .run({ idNumber: '', bankName: '', bankAccount: '', idPhoto: '', permitPhoto: '', ...w });
     },
     updateProject(p) {
-      d.prepare('UPDATE projects SET name=@name, location=@location, start=@start WHERE id=@id').run(p);
+      d.prepare('UPDATE projects SET name=@name, location=@location, start=@start, done=@done WHERE id=@id')
+        .run({ ...p, done: p.done ? 1 : 0 });
     },
     updateLog(l) {
       d.prepare('UPDATE logs SET workerId=@workerId, projectId=@projectId, date=@date, hours=@hours, wage=@wage, type=@type, note=@note WHERE id=@id').run(l);
