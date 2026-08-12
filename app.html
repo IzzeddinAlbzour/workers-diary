@@ -738,12 +738,18 @@ function logForm(l={},preWorker=''){
  const wid=l.workerId||preWorker;
  const opts=db.workers.map(w=>`<option value="${w.id}" ${w.id===wid?'selected':''}>${esc(w.name)}</option>`).join('');
  const propts=db.projects.map(p=>`<option value="${p.id}" ${p.id===l.projectId?'selected':''}>${esc(p.name)}</option>`).join('');
- return F('wi','العامل *',`<select id="wi"><option value="">اختر العامل</option>${opts}</select>`)
+ const startWorker=db.workers.find(w=>w.id===wid);
+ const wageVal=l.wage??(startWorker?startWorker.defaultWage:'')??'';
+ return F('wi','العامل *',`<select id="wi" onchange="fillDefaultWage()"><option value="">اختر العامل</option>${opts}</select>`)
  +F('pi','المشروع',`<select id="pi"><option value="">اختر المشروع</option>${propts}</select>`)
  +`<div class="row">${F('dt','التاريخ',`<input id="dt" type="date" value="${esc(l.date||today())}">`)}${F('hr','عدد الساعات',`<input id="hr" type="text" inputmode="decimal" oninput="digits(this)" value="${l.hours??8}">`)}</div>`
- +`<div class="row">${F('wg','الأجرة اليومية *',`<input id="wg" type="text" inputmode="decimal" oninput="digits(this)" value="${l.wage??''}">`)}${l.id?'':F('pay','سلفة/دفعة اليوم',`<input id="pay" type="text" inputmode="decimal" oninput="digits(this)" value="0">`)}</div>`
+ +`<div class="row">${F('wg','الأجرة اليومية *',`<input id="wg" type="text" inputmode="decimal" oninput="digits(this)" value="${wageVal}">`)}${l.id?'':F('pay','سلفة/دفعة اليوم',`<input id="pay" type="text" inputmode="decimal" oninput="digits(this)" value="0">`)}</div>`
  +F('type','نوع العمل',`<input id="type" placeholder="سباكة، كهرباء، جبصين..." value="${esc(l.type||'')}">`)
  +F('note','ملاحظات',`<textarea id="note">${esc(l.note||'')}</textarea>`);
+}
+function fillDefaultWage(){
+ const w=db.workers.find(x=>x.id===$('#wi').value);
+ if(w)$('#wg').value=w.defaultWage||0;
 }
 function readLogForm(){
  const wid=$('#wi').value;if(!wid){fieldErr('wi','اختر العامل');return null}
