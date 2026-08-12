@@ -33,7 +33,7 @@ assert.strictEqual(wEarned - wPaid, 180, 'per-worker balance');
 
 // field names round-trip identical to JSON shape
 assert.deepStrictEqual(all.workers[0], { ...w, idNumber: '', bankName: '', bankAccount: '', idPhoto: '', permitPhoto: '' });
-assert.deepStrictEqual(all.projects[0], p);
+assert.deepStrictEqual(all.projects[0], { ...p, done: 0 });
 assert.deepStrictEqual(all.logs[0], l1);
 assert.deepStrictEqual(all.payments[0], pay);
 
