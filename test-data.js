@@ -63,6 +63,7 @@ const savedLog = db.getAll().logs.find(x => x.id === lProfit.id);
 assert.strictEqual(savedLog.wage, 600, 'log wage (worker pay) persists');
 assert.strictEqual(savedLog.profit, 100, 'log profit (your cut) persists');
 assert.strictEqual(savedLog.wage + savedLog.profit, 700, 'company bill = wage + profit');
+db.deleteWorker(wProfit.id); // cleanup: keep later log/payment counts exact
 
 // deleteLog / deletePayment single-row
 db.deleteLog(l2.id);
