@@ -32,9 +32,9 @@ const wPaid = all.payments.filter(x => x.workerId === w.id).reduce((a, x) => a +
 assert.strictEqual(wEarned - wPaid, 180, 'per-worker balance');
 
 // field names round-trip identical to JSON shape
-assert.deepStrictEqual(all.workers[0], { ...w, idNumber: '', bankName: '', bankAccount: '', idPhoto: '', permitPhoto: '' });
+assert.deepStrictEqual(all.workers[0], { ...w, defaultProfit: 0, idNumber: '', bankName: '', bankAccount: '', idPhoto: '', permitPhoto: '' });
 assert.deepStrictEqual(all.projects[0], { ...p, done: 0 });
-assert.deepStrictEqual(all.logs[0], l1);
+assert.deepStrictEqual(all.logs[0], { ...l1, profit: 0 });
 assert.deepStrictEqual(all.payments[0], pay);
 
 // export -> reset -> import restores identical
@@ -48,10 +48,21 @@ assert.deepStrictEqual(db.getAll(), snapshot, 'export -> reset -> import restore
 // update round-trip
 const w2 = { ...w, name: 'أحمد محدث', defaultWage: 175 };
 db.updateWorker(w2);
-assert.deepStrictEqual(db.getAll().workers[0], { ...w2, idNumber: '', bankName: '', bankAccount: '', idPhoto: '', permitPhoto: '' }, 'updateWorker persists all fields');
+assert.deepStrictEqual(db.getAll().workers[0], { ...w2, defaultProfit: 0, idNumber: '', bankName: '', bankAccount: '', idPhoto: '', permitPhoto: '' }, 'updateWorker persists all fields');
 const l1b = { ...l1, wage: 160, hours: 9 };
 db.updateLog(l1b);
-assert.deepStrictEqual(db.getAll().logs.find(x => x.id === l1.id), l1b, 'updateLog persists');
+assert.deepStrictEqual(db.getAll().logs.find(x => x.id === l1.id), { ...l1b, profit: 0 }, 'updateLog persists');
+
+// wage/profit split (v1.4): worker's daily wage vs. your cut vs. company bill
+const wProfit = { id: uuid(), name: 'خالد', defaultWage: 100, defaultProfit: 20 };
+db.addWorker(wProfit);
+assert.strictEqual(db.getAll().workers.find(x => x.id === wProfit.id).defaultProfit, 20, 'defaultProfit persists');
+const lProfit = { id: uuid(), workerId: wProfit.id, date: '2026-08-13', wage: 600, profit: 100 };
+db.addLog(lProfit);
+const savedLog = db.getAll().logs.find(x => x.id === lProfit.id);
+assert.strictEqual(savedLog.wage, 600, 'log wage (worker pay) persists');
+assert.strictEqual(savedLog.profit, 100, 'log profit (your cut) persists');
+assert.strictEqual(savedLog.wage + savedLog.profit, 700, 'company bill = wage + profit');
 
 // deleteLog / deletePayment single-row
 db.deleteLog(l2.id);
@@ -74,7 +85,7 @@ assert.strictEqual(a2.workers.length + a2.logs.length + a2.payments.length, 0, '
 // v1.2: worker extra fields round-trip
 const w3 = { id: uuid(), name: 'سامي', phone: '', job: '', defaultWage: 100, idNumber: '401234567', bankName: 'بنك فلسطين', bankAccount: '123456', idPhoto: 'a.jpg', permitPhoto: 'b.jpg' };
 db.addWorker(w3);
-assert.deepStrictEqual(db.getAll().workers[0], w3, 'worker extra fields persist');
+assert.deepStrictEqual(db.getAll().workers[0], { ...w3, defaultProfit: 0 }, 'worker extra fields persist');
 db.updateWorker({ ...w3, idNumber: '999', bankName: 'العربي' });
 assert.strictEqual(db.getAll().workers[0].idNumber, '999', 'updateWorker persists idNumber');
 
