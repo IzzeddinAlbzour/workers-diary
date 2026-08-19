@@ -3,6 +3,8 @@ const { contextBridge, ipcRenderer } = require('electron');
 const call = (ch) => (...args) => ipcRenderer.invoke(ch, ...args);
 
 contextBridge.exposeInMainWorld('api', {
+  licenseState: call('licenseState'),
+  activateLicense: call('activateLicense'),
   getAll: call('getAll'),
   addWorker: call('addWorker'),
   addProject: call('addProject'),
@@ -19,6 +21,9 @@ contextBridge.exposeInMainWorld('api', {
   addProjectPayment: call('addProjectPayment'),
   updateProjectPayment: call('updateProjectPayment'),
   deleteProjectPayment: call('deleteProjectPayment'),
+  addExpense: call('addExpense'),
+  updateExpense: call('updateExpense'),
+  deleteExpense: call('deleteExpense'),
   pickPhoto: call('pickPhoto'),
   photoUrl: call('photoUrl'),
   openPhoto: call('openPhoto'),

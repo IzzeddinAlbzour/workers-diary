@@ -12,7 +12,8 @@
     "dist": "electron-builder --mac --x64"
   },
   "dependencies": {
-    "better-sqlite3": "^12.2.0"
+    "better-sqlite3": "^12.2.0",
+    "node-machine-id": "^1.1.12"
   },
   "devDependencies": {
     "electron": "^37.2.0",
@@ -26,6 +27,7 @@
       "main.js",
       "preload.js",
       "db.js",
+      "license.js",
       "app.html",
       "fonts/**",
       "build/icon.icns"

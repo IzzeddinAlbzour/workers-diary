@@ -3,6 +3,7 @@ const crypto = require('crypto');
 const path = require('path');
 const fs = require('fs');
 const { open } = require('./db');
+const license = require('./license');
 
 let db = null;
 let win = null;
@@ -11,6 +12,7 @@ const userData = () => app.getPath('userData');
 const dbPath = () => path.join(userData(), 'workers-diary.db');
 const backupsDir = () => path.join(userData(), 'backups');
 const statePath = () => path.join(userData(), 'window-state.json');
+const licensePath = () => path.join(userData(), 'license.json');
 
 if (!app.requestSingleInstanceLock()) app.quit();
 app.on('second-instance', () => {
@@ -142,6 +144,21 @@ process.on('uncaughtException', e => {
 app.whenReady().then(() => {
   if (!openDbOrRecover()) { app.quit(); return; }
 
+  ipcMain.handle('licenseState', () => {
+    const machineId = license.getMachineId();
+    try {
+      const saved = JSON.parse(fs.readFileSync(licensePath(), 'utf8'));
+      if (license.verify(machineId, saved.key)) return { licensed: true, machineId };
+    } catch {}
+    return { licensed: false, machineId };
+  });
+  ipcMain.handle('activateLicense', (e, key) => {
+    const machineId = license.getMachineId();
+    if (!license.verify(machineId, key)) return false;
+    fs.mkdirSync(userData(), { recursive: true });
+    fs.writeFileSync(licensePath(), JSON.stringify({ key: String(key).trim().toUpperCase() }));
+    return true;
+  });
   ipcMain.handle('getAll', () => db.getAll());
   ipcMain.handle('addWorker', (e, w) => db.addWorker(w));
   ipcMain.handle('addProject', (e, p) => db.addProject(p));
@@ -158,6 +175,9 @@ app.whenReady().then(() => {
   ipcMain.handle('addProjectPayment', (e, p) => db.addProjectPayment(p));
   ipcMain.handle('updateProjectPayment', (e, p) => db.updateProjectPayment(p));
   ipcMain.handle('deleteProjectPayment', (e, id) => db.deleteProjectPayment(id));
+  ipcMain.handle('addExpense', (e, x) => db.addExpense(x));
+  ipcMain.handle('updateExpense', (e, x) => db.updateExpense(x));
+  ipcMain.handle('deleteExpense', (e, id) => db.deleteExpense(id));
 
   const photosDir = () => path.join(userData(), 'photos');
   const photoFile = name => path.join(photosDir(), path.basename(name));

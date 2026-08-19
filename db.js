@@ -3,20 +3,23 @@ const crypto = require('crypto');
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS workers(
-  id TEXT PRIMARY KEY, name TEXT, phone TEXT, job TEXT, defaultWage REAL
+  id TEXT PRIMARY KEY, name TEXT, phone TEXT, job TEXT, defaultWage REAL, defaultProfit REAL DEFAULT 0
 );
 CREATE TABLE IF NOT EXISTS projects(
   id TEXT PRIMARY KEY, name TEXT, location TEXT, start TEXT, done INTEGER DEFAULT 0
 );
 CREATE TABLE IF NOT EXISTS logs(
   id TEXT PRIMARY KEY, workerId TEXT, projectId TEXT, date TEXT,
-  hours REAL, wage REAL, type TEXT, note TEXT
+  hours REAL, wage REAL, profit REAL DEFAULT 0, type TEXT, note TEXT
 );
 CREATE TABLE IF NOT EXISTS payments(
   id TEXT PRIMARY KEY, workerId TEXT, date TEXT, amount REAL, note TEXT
 );
 CREATE TABLE IF NOT EXISTS projectPayments(
   id TEXT PRIMARY KEY, projectId TEXT, date TEXT, amount REAL, note TEXT
+);
+CREATE TABLE IF NOT EXISTS expenses(
+  id TEXT PRIMARY KEY, partner TEXT, projectId TEXT, date TEXT, amount REAL, note TEXT
 );
 CREATE TABLE IF NOT EXISTS users(
   id TEXT PRIMARY KEY, name TEXT UNIQUE, salt TEXT, passHash TEXT,
@@ -35,8 +38,11 @@ function open(file) {
   const cols = d.prepare('PRAGMA table_info(workers)').all().map(c => c.name);
   for (const c of ['idNumber', 'bankName', 'bankAccount', 'idPhoto', 'permitPhoto'])
     if (!cols.includes(c)) d.exec(`ALTER TABLE workers ADD COLUMN ${c} TEXT DEFAULT ''`);
+  if (!cols.includes('defaultProfit')) d.exec(`ALTER TABLE workers ADD COLUMN defaultProfit REAL DEFAULT 0`);
   const pcols = d.prepare('PRAGMA table_info(projects)').all().map(c => c.name);
   if (!pcols.includes('done')) d.exec(`ALTER TABLE projects ADD COLUMN done INTEGER DEFAULT 0`);
+  const lcols = d.prepare('PRAGMA table_info(logs)').all().map(c => c.name);
+  if (!lcols.includes('profit')) d.exec(`ALTER TABLE logs ADD COLUMN profit REAL DEFAULT 0`);
 
   const api = {
     getAll() {
@@ -45,20 +51,21 @@ function open(file) {
         projects: d.prepare('SELECT * FROM projects').all(),
         logs: d.prepare('SELECT * FROM logs').all(),
         payments: d.prepare('SELECT * FROM payments').all(),
-        projectPayments: d.prepare('SELECT * FROM projectPayments').all()
+        projectPayments: d.prepare('SELECT * FROM projectPayments').all(),
+        expenses: d.prepare('SELECT * FROM expenses').all()
       };
     },
     addWorker(w) {
-      d.prepare('INSERT INTO workers(id,name,phone,job,defaultWage,idNumber,bankName,bankAccount,idPhoto,permitPhoto) VALUES (@id,@name,@phone,@job,@defaultWage,@idNumber,@bankName,@bankAccount,@idPhoto,@permitPhoto)')
-        .run({ phone: '', job: '', defaultWage: 0, idNumber: '', bankName: '', bankAccount: '', idPhoto: '', permitPhoto: '', ...w });
+      d.prepare('INSERT INTO workers(id,name,phone,job,defaultWage,defaultProfit,idNumber,bankName,bankAccount,idPhoto,permitPhoto) VALUES (@id,@name,@phone,@job,@defaultWage,@defaultProfit,@idNumber,@bankName,@bankAccount,@idPhoto,@permitPhoto)')
+        .run({ phone: '', job: '', defaultWage: 0, defaultProfit: 0, idNumber: '', bankName: '', bankAccount: '', idPhoto: '', permitPhoto: '', ...w });
     },
     addProject(p) {
       d.prepare('INSERT INTO projects(id,name,location,start,done) VALUES (@id,@name,@location,@start,@done)')
         .run({ location: '', start: '', ...p, done: p.done ? 1 : 0 });
     },
     addLog(l) {
-      d.prepare('INSERT INTO logs(id,workerId,projectId,date,hours,wage,type,note) VALUES (@id,@workerId,@projectId,@date,@hours,@wage,@type,@note)')
-        .run({ projectId: '', date: '', hours: 0, wage: 0, type: '', note: '', ...l });
+      d.prepare('INSERT INTO logs(id,workerId,projectId,date,hours,wage,profit,type,note) VALUES (@id,@workerId,@projectId,@date,@hours,@wage,@profit,@type,@note)')
+        .run({ projectId: '', date: '', hours: 0, wage: 0, profit: 0, type: '', note: '', ...l });
     },
     addPayment(p) {
       d.prepare('INSERT INTO payments(id,workerId,date,amount,note) VALUES (@id,@workerId,@date,@amount,@note)')
@@ -72,16 +79,24 @@ function open(file) {
       d.prepare('UPDATE projectPayments SET projectId=@projectId, date=@date, amount=@amount, note=@note WHERE id=@id').run(p);
     },
     deleteProjectPayment(id) { d.prepare('DELETE FROM projectPayments WHERE id=?').run(id); },
+    addExpense(x) {
+      d.prepare('INSERT INTO expenses(id,partner,projectId,date,amount,note) VALUES (@id,@partner,@projectId,@date,@amount,@note)')
+        .run({ projectId: '', date: '', amount: 0, note: '', ...x });
+    },
+    updateExpense(x) {
+      d.prepare('UPDATE expenses SET partner=@partner, projectId=@projectId, date=@date, amount=@amount, note=@note WHERE id=@id').run(x);
+    },
+    deleteExpense(id) { d.prepare('DELETE FROM expenses WHERE id=?').run(id); },
     updateWorker(w) {
-      d.prepare('UPDATE workers SET name=@name, phone=@phone, job=@job, defaultWage=@defaultWage, idNumber=@idNumber, bankName=@bankName, bankAccount=@bankAccount, idPhoto=@idPhoto, permitPhoto=@permitPhoto WHERE id=@id')
-        .run({ idNumber: '', bankName: '', bankAccount: '', idPhoto: '', permitPhoto: '', ...w });
+      d.prepare('UPDATE workers SET name=@name, phone=@phone, job=@job, defaultWage=@defaultWage, defaultProfit=@defaultProfit, idNumber=@idNumber, bankName=@bankName, bankAccount=@bankAccount, idPhoto=@idPhoto, permitPhoto=@permitPhoto WHERE id=@id')
+        .run({ defaultProfit: 0, idNumber: '', bankName: '', bankAccount: '', idPhoto: '', permitPhoto: '', ...w });
     },
     updateProject(p) {
       d.prepare('UPDATE projects SET name=@name, location=@location, start=@start, done=@done WHERE id=@id')
         .run({ ...p, done: p.done ? 1 : 0 });
     },
     updateLog(l) {
-      d.prepare('UPDATE logs SET workerId=@workerId, projectId=@projectId, date=@date, hours=@hours, wage=@wage, type=@type, note=@note WHERE id=@id').run(l);
+      d.prepare('UPDATE logs SET workerId=@workerId, projectId=@projectId, date=@date, hours=@hours, wage=@wage, profit=@profit, type=@type, note=@note WHERE id=@id').run({ profit: 0, ...l });
     },
     updatePayment(p) {
       d.prepare('UPDATE payments SET workerId=@workerId, date=@date, amount=@amount, note=@note WHERE id=@id').run(p);
@@ -105,7 +120,7 @@ function open(file) {
     deletePayment(id) { d.prepare('DELETE FROM payments WHERE id=?').run(id); },
     resetAll() {
       d.transaction(() => {
-        for (const t of ['workers', 'projects', 'logs', 'payments', 'projectPayments']) d.exec(`DELETE FROM ${t}`);
+        for (const t of ['workers', 'projects', 'logs', 'payments', 'projectPayments', 'expenses']) d.exec(`DELETE FROM ${t}`);
       })();
     },
     importAll(data) {
@@ -116,6 +131,7 @@ function open(file) {
         for (const l of data.logs || []) api.addLog(l);
         for (const p of data.payments || []) api.addPayment(p);
         for (const p of data.projectPayments || []) api.addProjectPayment(p);
+        for (const x of data.expenses || []) api.addExpense(x);
       })();
     },
     // ---- users / auth (same-device trust model; hashes stop casual snooping) ----
