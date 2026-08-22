@@ -296,6 +296,16 @@ function printSheet(title,html){
  window.print();
  setTimeout(done,4000);
 }
+/* preview before commit to paper: same overlay pattern as modal()/viewSheet() */
+function printPreview(title,html){
+ closePrintPreview();
+ const wrap=document.createElement('div');wrap.id='printpreview';wrap.className='overlay';
+ wrap.innerHTML=`<div class="sheet"><div class="head"><span>معاينة الطباعة — ${esc(title)}</span><button class="x" aria-label="إغلاق" title="إغلاق" onclick="closePrintPreview()">${ic.x(17)}</button></div><div class="body"><h2>${esc(title)}</h2>${html}<div class="actions" style="margin-top:14px"><button class="btn primary" id="ppPrintBtn">${ic.print(16)} طباعة</button><button class="btn secondary" onclick="closePrintPreview()">إغلاق</button></div></div></div>`;
+ wrap.addEventListener('mousedown',e=>{if(e.target===wrap)closePrintPreview()});
+ document.body.appendChild(wrap);
+ $('#ppPrintBtn').onclick=()=>printSheet(title,html);
+}
+function closePrintPreview(){$('#printpreview')?.remove()}
 function buildNav(){
  $('#nav').innerHTML=PAGES.filter(p=>p.ok()).map(p=>`<button data-page="${p.id}">${p.icon(21)}${LABELS[p.id]}</button>`).join('');
  document.querySelectorAll('#nav button').forEach(b=>b.onclick=()=>{page=b.dataset.page;render()});
@@ -442,7 +452,7 @@ function printReportView(){
  const rows=logs.map(reportRowHtml).join('')||`<tr><td colspan="8">لا توجد نتائج مطابقة</td></tr>`;
  const totalWage=logs.reduce((a,l)=>a+Number(l.wage||0),0),totalProfit=logs.reduce((a,l)=>a+Number(l.profit||0),0);
  const title=_rWorker?workerName(_rWorker):(_rProject?projectName(_rProject):'تقرير عام');
- printSheet(title,`<table class="ptable"><thead><tr><th>التاريخ</th><th>العامل</th><th>المشروع</th><th>الساعات</th><th>نوع العمل</th><th>أجر العامل</th><th>ربحك</th><th>المستحق من الشركة</th></tr></thead><tbody>${rows}</tbody><tfoot><tr><td colspan="5">الإجمالي</td><td>${money(totalWage)}</td><td>${money(totalProfit)}</td><td>${money(totalWage+totalProfit)}</td></tr></tfoot></table>`);
+ printPreview(title,`<table class="ptable"><thead><tr><th>التاريخ</th><th>العامل</th><th>المشروع</th><th>الساعات</th><th>نوع العمل</th><th>أجر العامل</th><th>ربحك</th><th>المستحق من الشركة</th></tr></thead><tbody>${rows}</tbody><tfoot><tr><td colspan="5">الإجمالي</td><td>${money(totalWage)}</td><td>${money(totalProfit)}</td><td>${money(totalWage+totalProfit)}</td></tr></tfoot></table>`);
 }
 function accounts(){
  const s=stats();
@@ -657,7 +667,7 @@ function modal(title,body,onSave,saveLabel='حفظ'){
  const f=wrap.querySelector('input,select,textarea'); if(f)f.focus();
 }
 function closeModal(){$('#modal')?.remove()}
-document.addEventListener('keydown',e=>{if(e.key==='Escape'){closeModal();closeView()}});
+document.addEventListener('keydown',e=>{if(e.key==='Escape'){closeModal();closeView();closePrintPreview()}});
 function fieldErr(id,msg){
  const el=$('#'+id); const f=el.closest('.field'); f.classList.add('err');
  f.querySelector('.msg').textContent=msg;
@@ -874,7 +884,7 @@ function companyReportHtml(projectId){
 }
 function printProject(id){
  const p=db.projects.find(x=>x.id===id);
- printSheet(p?p.name:'مشروع',companyReportHtml(id));
+ printPreview(p?p.name:'مشروع',companyReportHtml(id));
 }
 /* internal worker print: all logs, grouped by project, wage/profit shown only if the printing user can('money') */
 function printWorkerFull(workerId){
@@ -889,13 +899,17 @@ function printWorkerFull(workerId){
   const subtotal=ls.reduce((a,l)=>a+Number(l.wage||0),0);
   return `<h4>${esc(pid?projectName(pid):'بدون مشروع')}</h4><table class="ptable"><thead><tr><th>التاريخ</th><th>الساعات</th><th>نوع العمل</th>${showMoney?'<th>أجر العامل</th><th>ربحك</th><th>المستحق من الشركة</th>':''}</tr></thead><tbody>${rows}</tbody>${showMoney?`<tfoot><tr><td colspan="3">إجمالي أجر العامل في هذا المشروع</td><td colspan="3">${money(subtotal)}</td></tr></tfoot>`:''}</table>`;
  }).join('')||'<p>لا توجد يوميات</p>';
- let summary='';
+ let summary='',paysSection='';
  if(showMoney){
   const totalEarned=logs.reduce((a,l)=>a+Number(l.wage||0),0);
-  const totalPaid=db.payments.filter(p=>p.workerId===workerId).reduce((a,p)=>a+Number(p.amount||0),0);
+  const pays=[...db.payments.filter(p=>p.workerId===workerId)].sort((a,b)=>a.date.localeCompare(b.date));
+  const totalPaid=pays.reduce((a,p)=>a+Number(p.amount||0),0);
   summary=`<p><b>إجمالي المستحق:</b> ${money(totalEarned)} &nbsp; <b>المدفوع:</b> ${money(totalPaid)} &nbsp; <b>الرصيد:</b> ${money(totalEarned-totalPaid)}</p>`;
+  const paysRows=pays.map(p=>`<tr><td>${esc(p.date)}</td><td>${esc(p.note||'')}</td><td>${money(p.amount)}</td></tr>`).join('')||`<tr><td colspan="3">لا يوجد دفعات</td></tr>`;
+  paysSection=`<h4>الدفعات</h4><table class="ptable"><thead><tr><th>التاريخ</th><th>ملاحظات</th><th>المبلغ</th></tr></thead><tbody>${paysRows}</tbody><tfoot><tr><td colspan="2">الإجمالي</td><td>${money(totalPaid)}</td></tr></tfoot></table>`;
  }
- printSheet(w.name,`<p class="muted">${esc(w.job||'')}${w.phone?' • '+esc(w.phone):''}</p>${summary}${sections}`);
+ const extra=[can('private')&&w.idNumber?'هوية <span class="num">'+esc(w.idNumber)+'</span>':'',w.bankName?'بنك: '+esc(w.bankName):'',w.bankAccount?'حساب: <span class="num">'+esc(w.bankAccount)+'</span>':''].filter(Boolean).join(' • ');
+ printPreview(w.name,`<p class="muted">${esc(w.job||'')}${w.phone?' • '+esc(w.phone):''}${extra?' • '+extra:''}</p>${summary}${sections}${paysSection}`);
 }
 
 /* ---------- logs CRUD ---------- */
