@@ -177,13 +177,47 @@ nav button.active::before{content:"";position:absolute;top:0;width:26px;height:3
 .ptable th,.ptable td{border:1px solid var(--line);padding:6px 8px;text-align:right}
 .ptable th{background:var(--bg)}
 .ptable tfoot td{font-weight:800}
+
+/* ---------- printed document letterhead + sign-off (shared by preview and paper output) ---------- */
+.doc-head{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;padding-bottom:12px;margin-bottom:16px;border-bottom:2px solid var(--navy)}
+.doc-brand{display:flex;align-items:center;gap:10px}
+.doc-mark{width:36px;height:36px;flex:none;border-radius:9px;background:var(--navy);color:#f7b500;display:grid;place-items:center;print-color-adjust:exact;-webkit-print-color-adjust:exact}
+.doc-brand b{display:block;font-size:15px;font-weight:800;color:var(--navy)}
+.doc-brand span{display:block;font-size:11.5px;color:var(--ink-3);font-weight:600;margin-top:2px}
+.doc-meta b{display:block;font-size:16px;font-weight:800}
+.doc-meta span{display:block;font-size:11.5px;color:var(--ink-3);margin-top:2px}
+.sigblock{display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-top:44px}
+.sigline{border-top:1px solid var(--ink);padding-top:6px;font-size:12px;color:var(--ink-2);font-weight:600;text-align:center}
+
+/* ---------- print preview: document-viewer chrome, scoped to #printpreview so other modals are untouched ---------- */
+#printpreview{background:rgba(15,22,36,.78)}
+#printpreview .sheet{max-width:820px;background:transparent;box-shadow:none;border-radius:0;overflow:visible}
+#printpreview .head{background:transparent;color:#e7ecf5;padding:0 2px 12px;font-size:13.5px;font-weight:700}
+#printpreview .head .x{color:#c7d0e0}
+#printpreview .head .x:hover{background:rgba(255,255,255,.14);color:#fff}
+.pp-paper{background:#fff;color:var(--ink);border-radius:2px;padding:16mm 14mm;box-shadow:0 1px 2px rgba(8,17,34,.1),0 30px 60px -12px rgba(8,17,34,.5);min-height:40vh}
+#printpreview .actions{margin-top:16px!important;max-width:340px;margin-inline:auto}
+
+@page{margin:14mm 12mm}
 @media print{
+ html,body{height:auto!important;overflow:visible!important;background:#fff}
+ /* the in-app preview modal is position:fixed, which Chromium clips to one page instead of
+    paginating — it's always closed before printSheet() runs, but hide it defensively too so a
+    stray open overlay never gets captured instead of #printSheet and truncate the output */
+ .overlay,#printpreview{display:none!important}
  nav,header,.toolbar,.actions,button,select,#toast{display:none!important}
  body,.app{background:#fff}
  .card{box-shadow:none;border:1px solid var(--line);break-inside:avoid}
  main{padding:0}
  body.printing-sheet .app{display:none!important}
- body.printing-sheet #printSheet{display:block!important}
+ body.printing-sheet #printSheet{display:block!important;position:static!important;color:#000}
+ .doc-head{break-after:avoid}
+ .sigblock{break-inside:avoid}
+ .ptable{font-size:12.5px}
+ .ptable th{print-color-adjust:exact;-webkit-print-color-adjust:exact}
+ .ptable thead{display:table-header-group}
+ .ptable tfoot{display:table-row-group}
+ .ptable tr{break-inside:avoid;page-break-inside:avoid}
 }
 </style>
 </head>
@@ -289,21 +323,29 @@ function emptyState(icon,title,hint,btn){
  return `<div class="empty"><div class="eic">${icon(26)}</div><b>${title}</b><p>${hint}</p>${btn||''}</div>`;
 }
 function printSheet(title,html){
- $('#printSheet').innerHTML=`<h2>${esc(title)}</h2>${html}`;
+ $('#printSheet').innerHTML=html;
  document.body.classList.add('printing-sheet');
  const done=()=>{document.body.classList.remove('printing-sheet');window.removeEventListener('afterprint',done)};
  window.addEventListener('afterprint',done);
  window.print();
  setTimeout(done,4000);
 }
-/* preview before commit to paper: same overlay pattern as modal()/viewSheet() */
+/* letterhead shared by every printed document: brand mark + document type on the lead side, title + date on the trailing side */
+function printDocHead(title,docType){
+ return `<div class="doc-head"><div class="doc-brand"><span class="doc-mark">${ic.crane(18)}</span><div><b>يوميات العمال</b><span>${esc(docType)}</span></div></div><div class="doc-meta"><b>${esc(title)}</b><span class="num">${esc(today())}</span></div></div>`;
+}
+/* physical sign-off line — worker pay slips are handed over on paper and signed on site */
+function sigBlock(){
+ return `<div class="sigblock"><div class="sigline">توقيع العامل</div><div class="sigline">توقيع الإدارة</div></div>`;
+}
+/* preview before commit to paper: same overlay pattern as modal()/viewSheet(), styled as a document viewer (gray canvas + white page) rather than a generic app modal */
 function printPreview(title,html){
  closePrintPreview();
  const wrap=document.createElement('div');wrap.id='printpreview';wrap.className='overlay';
- wrap.innerHTML=`<div class="sheet"><div class="head"><span>معاينة الطباعة — ${esc(title)}</span><button class="x" aria-label="إغلاق" title="إغلاق" onclick="closePrintPreview()">${ic.x(17)}</button></div><div class="body"><h2>${esc(title)}</h2>${html}<div class="actions" style="margin-top:14px"><button class="btn primary" id="ppPrintBtn">${ic.print(16)} طباعة</button><button class="btn secondary" onclick="closePrintPreview()">إغلاق</button></div></div></div>`;
+ wrap.innerHTML=`<div class="sheet"><div class="head"><span>معاينة الطباعة</span><button class="x" aria-label="إغلاق" title="إغلاق" onclick="closePrintPreview()">${ic.x(17)}</button></div><div class="pp-paper">${html}</div><div class="actions" style="margin-top:14px"><button class="btn primary" id="ppPrintBtn">${ic.print(16)} طباعة</button><button class="btn secondary" onclick="closePrintPreview()">إغلاق</button></div></div>`;
  wrap.addEventListener('mousedown',e=>{if(e.target===wrap)closePrintPreview()});
  document.body.appendChild(wrap);
- $('#ppPrintBtn').onclick=()=>printSheet(title,html);
+ $('#ppPrintBtn').onclick=()=>{closePrintPreview();printSheet(title,html);};
 }
 function closePrintPreview(){$('#printpreview')?.remove()}
 function buildNav(){
@@ -452,7 +494,7 @@ function printReportView(){
  const rows=logs.map(reportRowHtml).join('')||`<tr><td colspan="8">لا توجد نتائج مطابقة</td></tr>`;
  const totalWage=logs.reduce((a,l)=>a+Number(l.wage||0),0),totalProfit=logs.reduce((a,l)=>a+Number(l.profit||0),0);
  const title=_rWorker?workerName(_rWorker):(_rProject?projectName(_rProject):'تقرير عام');
- printPreview(title,`<table class="ptable"><thead><tr><th>التاريخ</th><th>العامل</th><th>المشروع</th><th>الساعات</th><th>نوع العمل</th><th>أجر العامل</th><th>ربحك</th><th>المستحق من الشركة</th></tr></thead><tbody>${rows}</tbody><tfoot><tr><td colspan="5">الإجمالي</td><td>${money(totalWage)}</td><td>${money(totalProfit)}</td><td>${money(totalWage+totalProfit)}</td></tr></tfoot></table>`);
+ printPreview(title,printDocHead(title,'تقرير مالي داخلي')+`<table class="ptable"><thead><tr><th>التاريخ</th><th>العامل</th><th>المشروع</th><th>الساعات</th><th>نوع العمل</th><th>أجر العامل</th><th>ربحك</th><th>المستحق من الشركة</th></tr></thead><tbody>${rows}</tbody><tfoot><tr><td colspan="5">الإجمالي</td><td>${money(totalWage)}</td><td>${money(totalProfit)}</td><td>${money(totalWage+totalProfit)}</td></tr></tfoot></table>`);
 }
 function accounts(){
  const s=stats();
@@ -884,9 +926,10 @@ function companyReportHtml(projectId){
 }
 function printProject(id){
  const p=db.projects.find(x=>x.id===id);
- printPreview(p?p.name:'مشروع',companyReportHtml(id));
+ const title=p?p.name:'مشروع';
+ printPreview(title,printDocHead(title,'تقرير مشروع')+companyReportHtml(id));
 }
-/* internal worker print: all logs, grouped by project, wage/profit shown only if the printing user can('money') */
+/* worker-facing print: handed to the worker to see his own record. Must NEVER show your profit or the company-billed total — only his wage. Wage figures still gated by can('money') so a limited-access user printing this doesn't see money either. */
 function printWorkerFull(workerId){
  const w=db.workers.find(x=>x.id===workerId);
  if(!w)return;
@@ -895,9 +938,9 @@ function printWorkerFull(workerId){
  const byProj={};
  logs.forEach(l=>{const k=l.projectId||'';(byProj[k]=byProj[k]||[]).push(l)});
  const sections=Object.entries(byProj).map(([pid,ls])=>{
-  const rows=ls.map(l=>`<tr><td>${esc(l.date)}</td><td>${esc(l.hours||0)}</td><td>${esc(l.type||'')}</td>${showMoney?`<td>${money(l.wage)}</td><td>${money(l.profit||0)}</td><td>${money(Number(l.wage||0)+Number(l.profit||0))}</td>`:''}</tr>`).join('');
+  const rows=ls.map(l=>`<tr><td>${esc(l.date)}</td><td>${esc(l.hours||0)}</td><td>${esc(l.type||'')}</td>${showMoney?`<td>${money(l.wage)}</td>`:''}</tr>`).join('');
   const subtotal=ls.reduce((a,l)=>a+Number(l.wage||0),0);
-  return `<h4>${esc(pid?projectName(pid):'بدون مشروع')}</h4><table class="ptable"><thead><tr><th>التاريخ</th><th>الساعات</th><th>نوع العمل</th>${showMoney?'<th>أجر العامل</th><th>ربحك</th><th>المستحق من الشركة</th>':''}</tr></thead><tbody>${rows}</tbody>${showMoney?`<tfoot><tr><td colspan="3">إجمالي أجر العامل في هذا المشروع</td><td colspan="3">${money(subtotal)}</td></tr></tfoot>`:''}</table>`;
+  return `<h4>${esc(pid?projectName(pid):'بدون مشروع')}</h4><table class="ptable"><thead><tr><th>التاريخ</th><th>الساعات</th><th>نوع العمل</th>${showMoney?'<th>أجر العامل</th>':''}</tr></thead><tbody>${rows}</tbody>${showMoney?`<tfoot><tr><td colspan="3">إجمالي أجر العامل في هذا المشروع</td><td>${money(subtotal)}</td></tr></tfoot>`:''}</table>`;
  }).join('')||'<p>لا توجد يوميات</p>';
  let summary='',paysSection='';
  if(showMoney){
@@ -909,7 +952,7 @@ function printWorkerFull(workerId){
   paysSection=`<h4>الدفعات</h4><table class="ptable"><thead><tr><th>التاريخ</th><th>ملاحظات</th><th>المبلغ</th></tr></thead><tbody>${paysRows}</tbody><tfoot><tr><td colspan="2">الإجمالي</td><td>${money(totalPaid)}</td></tr></tfoot></table>`;
  }
  const extra=[can('private')&&w.idNumber?'هوية <span class="num">'+esc(w.idNumber)+'</span>':'',w.bankName?'بنك: '+esc(w.bankName):'',w.bankAccount?'حساب: <span class="num">'+esc(w.bankAccount)+'</span>':''].filter(Boolean).join(' • ');
- printPreview(w.name,`<p class="muted">${esc(w.job||'')}${w.phone?' • '+esc(w.phone):''}${extra?' • '+extra:''}</p>${summary}${sections}${paysSection}`);
+ printPreview(w.name,printDocHead(w.name,'كشف حساب عامل')+`<p class="muted">${esc(w.job||'')}${w.phone?' • '+esc(w.phone):''}${extra?' • '+extra:''}</p>${summary}${sections}${paysSection}`+sigBlock());
 }
 
 /* ---------- logs CRUD ---------- */
