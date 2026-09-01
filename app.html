@@ -177,6 +177,31 @@ nav button.active::before{content:"";position:absolute;top:0;width:26px;height:3
 .ptable th,.ptable td{border:1px solid var(--line);padding:6px 8px;text-align:right}
 .ptable th{background:var(--bg)}
 .ptable tfoot td{font-weight:800}
+/* month bands inside a table: header row opens a month, subtotal row closes it */
+.ptable tr.mhead td{background:var(--navy);color:#fff;font-weight:800;font-size:13.5px;print-color-adjust:exact;-webkit-print-color-adjust:exact}
+.ptable tr.msub td{background:var(--bg);font-weight:800;print-color-adjust:exact;-webkit-print-color-adjust:exact}
+
+/* ---------- month sections (screen) ---------- */
+.msec{margin:8px 0;border:1px solid var(--line);border-radius:12px;overflow:hidden;background:#fff}
+.msec>summary{list-style:none;cursor:pointer;padding:11px 13px;background:var(--blue-soft);color:var(--navy);font-weight:800;font-size:14px;display:flex;align-items:center;justify-content:space-between;gap:10px}
+.msec>summary::-webkit-details-marker{display:none}
+.msec>summary .msum{font-weight:700;font-size:12.5px;color:var(--ink-2)}
+.msec[open]>summary{border-bottom:1px solid var(--line)}
+.msec>.mbody{padding:0 13px 8px}
+.msec>.mbody .item:last-child{border-bottom:0}
+.monthbar{display:flex;gap:6px;align-items:center}
+.monthbar input[type=month]{flex:1;min-width:0;padding:11px 12px;border:1.5px solid #d9e1ee;border-radius:12px;background:#fff;outline:none}
+.monthbar input[type=month]:focus{border-color:var(--blue);box-shadow:0 0 0 3px rgba(18,101,220,.13)}
+.monthbar .step{width:40px;height:44px;flex:none;border-radius:11px;background:var(--blue-soft);color:var(--blue);display:grid;place-items:center}
+.monthbar .step:hover{background:#dce9ff}
+.monthbar .step:disabled{opacity:.4;cursor:default;background:var(--bg)}
+
+/* ---------- printed month statement ---------- */
+.month-title{background:var(--navy);color:#fff;padding:7px 11px;border-radius:6px;font-size:15px;font-weight:800;margin:0 0 8px;print-color-adjust:exact;-webkit-print-color-adjust:exact}
+.month-sum{width:100%;border-collapse:collapse;margin:0 0 14px;font-size:13.5px}
+.month-sum td{border:1px solid var(--line);padding:6px 8px}
+.month-sum td:first-child{background:var(--bg);font-weight:700;width:58%;print-color-adjust:exact;-webkit-print-color-adjust:exact}
+.month-sum tr.final td{font-weight:800;font-size:15px}
 
 /* ---------- printed document letterhead + sign-off (shared by preview and paper output) ---------- */
 .doc-head{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;padding-bottom:12px;margin-bottom:16px;border-bottom:2px solid var(--navy)}
@@ -213,6 +238,10 @@ nav button.active::before{content:"";position:absolute;top:0;width:26px;height:3
  body.printing-sheet #printSheet{display:block!important;position:static!important;color:#000}
  .doc-head{break-after:avoid}
  .sigblock{break-inside:avoid}
+ /* one month per sheet: each month of a worker statement is its own signable payslip */
+ .month-block+.month-block{break-before:page;page-break-before:always}
+ .month-title{break-after:avoid;page-break-after:avoid}
+ .month-sum{break-inside:avoid;page-break-inside:avoid}
  .ptable{font-size:12.5px}
  .ptable th{print-color-adjust:exact;-webkit-print-color-adjust:exact}
  .ptable thead{display:table-header-group}
@@ -239,6 +268,7 @@ nav button.active::before{content:"";position:absolute;top:0;width:26px;height:3
 </div>
 <div id="toast"></div>
 <div id="printSheet"></div>
+<script src="month.js"></script>
 <script>
 /* ---------- icon system: one stroke family (24px grid, 2px, round) ---------- */
 const I = (d,s=18)=>`<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${d}</svg>`;
@@ -261,7 +291,9 @@ const ic = {
  x: d=>I('<path d="M6 6l12 12"/><path d="M18 6 6 18"/>',d),
  cal: d=>I('<rect x="4" y="5" width="16" height="16" rx="2.5"/><path d="M4 10h16"/><path d="M8 3v4"/><path d="M16 3v4"/>',d),
  gear: d=>I('<circle cx="12" cy="12" r="3.2"/><path d="M12 2.8v2.7M12 18.5v2.7M2.8 12h2.7M18.5 12h2.7M5.5 5.5l1.9 1.9M16.6 16.6l1.9 1.9M18.5 5.5l-1.9 1.9M7.4 16.6l-1.9 1.9"/>',d),
- lock: d=>I('<rect x="5" y="10" width="14" height="10" rx="2.5"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/>',d)
+ lock: d=>I('<rect x="5" y="10" width="14" height="10" rx="2.5"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/>',d),
+ chevR: d=>I('<path d="m9 5 7 7-7 7"/>',d),
+ chevL: d=>I('<path d="m15 5-7 7 7 7"/>',d)
 };
 
 const PAGES=[
@@ -280,7 +312,9 @@ let db={workers:[],projects:[],logs:[],payments:[],projectPayments:[],expenses:[
 let page='home';
 let _wsort='def',_psort='def',_rsort='def',_showDone=false;
 let _rWorker='',_rProject='',_rFrom='',_rTo='';
+let _rMonth=''; // '' = all months (report list groups by month); "YYYY-MM" = one month only
 let _eFrom='',_eTo='';
+let _eMonth='';
 let _openWorker=null; // workerId whose full-profile viewSheet is currently open, for live refresh after edits
 let CU=null; // current user {id,name,isAdmin,perms}
 const can=k=>!!CU&&(CU.isAdmin||!!CU.perms[k]);
@@ -303,6 +337,32 @@ function digits(el){
 }
 function workerName(id){return db.workers.find(x=>x.id==id)?.name||'غير محدد'}
 function projectName(id){return db.projects.find(x=>x.id==id)?.name||'غير محدد'}
+/* ---------- month filtering (ym/monthLabel/monthRange/stepMonth/groupByMonth/carryOver come from month.js) ----------
+   The month picker is a shortcut over the from/to filter that already exists: picking a month writes its
+   first and last day into _rFrom/_rTo, so there stays exactly one filter path instead of two that can disagree. */
+function monthBar(id,value,setter){
+ const step=(n,label,icon)=>`<button class="step" title="${label}" aria-label="${label}" ${value?'':'disabled'} onclick="${setter}('${value?stepMonth(value,n):''}')">${icon(16)}</button>`;
+ return `<div class="monthbar">${step(-1,'الشهر السابق',ic.chevR)}<input id="${id}" type="month" value="${value}" onchange="${setter}(this.value)">${step(1,'الشهر التالي',ic.chevL)}</div>`;
+}
+/* one chip per month that actually has data, so the months are discoverable without hunting in the picker */
+function monthChips(rows,current,setter){
+ const months=monthsOf(rows).filter(Boolean).slice(0,12);
+ if(!months.length)return '';
+ const chip=(k,label)=>`<button class="chip" style="${k===current?'background:var(--navy);color:#fff':''}" onclick="${setter}('${k}')">${label}</button>`;
+ return `<div style="margin-top:8px;display:flex;flex-wrap:wrap;gap:2px">${chip('','كل الشهور')}${months.map(k=>chip(k,monthLabel(k,true))).join('')}</div>`;
+}
+function setReportMonth(k){
+ _rMonth=k||'';
+ const r=_rMonth?monthRange(_rMonth):{from:'',to:''};
+ _rFrom=r.from;_rTo=r.to;
+ reports();
+}
+function setExpenseMonth(k){
+ _eMonth=k||'';
+ const r=_eMonth?monthRange(_eMonth):{from:'',to:''};
+ _eFrom=r.from;_eTo=r.to;
+ expenses();
+}
 function stats(){
  const earned=db.logs.reduce((a,l)=>a+Number(l.wage||0),0);
  const profit=db.logs.reduce((a,l)=>a+Number(l.profit||0),0);
@@ -463,6 +523,19 @@ function filteredLogs(){
 function reportRowHtml(l){
  return `<tr><td>${esc(l.date)}</td><td>${esc(workerName(l.workerId))}</td><td>${esc(projectName(l.projectId))}</td><td>${esc(l.hours||0)}</td><td>${esc(l.type||'')}</td><td>${money(l.wage)}</td><td>${money(l.profit||0)}</td><td>${money(Number(l.wage||0)+Number(l.profit||0))}</td></tr>`;
 }
+const NO_ROWS=`<tr><td colspan="8">لا توجد نتائج مطابقة</td></tr>`;
+/* one month = one band: navy header row, that month's days, then its subtotal row. Skipped when a
+   single month is already selected, because then the whole table is that one month. */
+function reportBodyRows(logs,desc=true){
+ if(!logs.length)return NO_ROWS;
+ if(_rMonth)return logs.map(reportRowHtml).join('');
+ return groupByMonth(logs,desc).map(([k,ls])=>{
+  const w=ls.reduce((a,l)=>a+Number(l.wage||0),0),p=ls.reduce((a,l)=>a+Number(l.profit||0),0);
+  return `<tr class="mhead"><td colspan="8">${monthLabel(k)}</td></tr>`
+   +ls.map(reportRowHtml).join('')
+   +`<tr class="msub"><td colspan="5">إجمالي ${monthLabel(k,true)} — <span class="num">${ls.length}</span> يوم</td><td>${money(w)}</td><td>${money(p)}</td><td>${money(w+p)}</td></tr>`;
+ }).join('');
+}
 function reports(){
  const workerOpts=`<option value="">كل العمال</option>`+db.workers.map(w=>`<option value="${w.id}" ${w.id===_rWorker?'selected':''}>${esc(w.name)}</option>`).join('');
  const projectOpts=`<option value="">كل المشاريع</option>`+db.projects.map(p=>`<option value="${p.id}" ${p.id===_rProject?'selected':''}>${esc(p.name)}</option>`).join('');
@@ -470,31 +543,49 @@ function reports(){
  const fEarned=logs.reduce((a,l)=>a+Number(l.wage||0),0);
  const fProfit=logs.reduce((a,l)=>a+Number(l.profit||0),0);
  const fHours=logs.reduce((a,l)=>a+Number(l.hours||0),0);
- const rows=logs.map(reportRowHtml).join('')||`<tr><td colspan="8">لا توجد نتائج مطابقة</td></tr>`;
+ const rows=reportBodyRows(logs);
  let byWorker=db.workers.map(w=>{const ls=logs.filter(l=>l.workerId===w.id);return {w,days:ls.length,hours:ls.reduce((a,l)=>a+Number(l.hours||0),0),earned:ls.reduce((a,l)=>a+Number(l.wage||0),0),paid:db.payments.filter(p=>p.workerId===w.id).reduce((a,p)=>a+Number(p.amount||0),0)}}).filter(x=>x.days||x.paid);
  if(_rsort==='name')byWorker.sort((a,b)=>a.w.name.localeCompare(b.w.name,'ar'));
  else if(_rsort==='earned')byWorker.sort((a,b)=>b.earned-a.earned);
  const filterActive=_rWorker||_rProject||_rFrom||_rTo;
+ /* the month scope is chosen against the logs that pass the worker/project filter, so the chips only
+    ever offer months that would actually return rows */
+ const scopeLogs=db.logs.filter(l=>(!_rWorker||l.workerId===_rWorker)&&(!_rProject||l.projectId===_rProject));
  $('#main').innerHTML=`<div class="card"><h3>تصفية التقرير</h3>
  <div class="row">${F('rw','العامل',`<select id="rw" onchange="_rWorker=this.value;reports()">${workerOpts}</select>`)}${F('rp','المشروع',`<select id="rp" onchange="_rProject=this.value;reports()">${projectOpts}</select>`)}</div>
- <div class="row">${F('rf','من تاريخ',`<input id="rf" type="date" value="${_rFrom}" onchange="_rFrom=this.value;reports()">`)}${F('rt','إلى تاريخ',`<input id="rt" type="date" value="${_rTo}" onchange="_rTo=this.value;reports()">`)}</div>
- ${filterActive?`<button class="btn secondary wide" onclick="_rWorker='';_rProject='';_rFrom='';_rTo='';reports()">${ic.x(15)} إزالة التصفية</button>`:''}</div>
+ <div class="field"><label for="rm">الشهر</label>${monthBar('rm',_rMonth,'setReportMonth')}${monthChips(scopeLogs,_rMonth,'setReportMonth')}<div class="msg"></div></div>
+ <p class="muted" style="margin:0 0 8px">${_rMonth?`معروض شهر واحد فقط: <b>${monthLabel(_rMonth)}</b>`:'كل الشهور — السجلات مقسومة لشهور، ولكل شهر مجموعه.'}</p>
+ <div class="row">${F('rf','من تاريخ',`<input id="rf" type="date" value="${_rFrom}" onchange="_rFrom=this.value;_rMonth='';reports()">`)}${F('rt','إلى تاريخ',`<input id="rt" type="date" value="${_rTo}" onchange="_rTo=this.value;_rMonth='';reports()">`)}</div>
+ ${filterActive?`<button class="btn secondary wide" onclick="_rWorker='';_rProject='';_rMonth='';_rFrom='';_rTo='';reports()">${ic.x(15)} إزالة التصفية</button>`:''}</div>
  <div class="card"><h3>ملخص التقرير</h3><div class="grid">
  <div><span class="muted">الأيام</span><br><b class="num">${logs.length}</b></div><div><span class="muted">الساعات</span><br><b class="num">${fHours}</b></div>
  <div><span class="muted">أجور العمال</span><br><b style="color:var(--green)">${money(fEarned)}</b></div><div><span class="muted">ربحك</span><br><b style="color:var(--purple)">${money(fProfit)}</b></div>
- <div style="grid-column:1/-1"><span class="muted">المستحق من الشركة</span><br><b>${money(fEarned+fProfit)}</b></div></div></div>
+ <div style="grid-column:1/-1"><span class="muted">المستحق من الشركة</span><br><b>${money(fEarned+fProfit)}</b></div></div>
+ ${_rMonth&&_rWorker?carryOverHtml(_rWorker,_rMonth):''}</div>
  <div class="card"><h3>السجلات التفصيلية</h3><div style="overflow-x:auto"><table class="ptable"><thead><tr><th>التاريخ</th><th>العامل</th><th>المشروع</th><th>الساعات</th><th>نوع العمل</th><th>أجر العامل</th><th>ربحك</th><th>المستحق من الشركة</th></tr></thead><tbody>${rows}</tbody></table></div></div>
  <div class="card"><h3>كشف العمال</h3>
  ${byWorker.length?`<select style="margin-bottom:10px" onchange="_rsort=this.value;reports()"><option value="def" ${_rsort==='def'?'selected':''}>الترتيب الافتراضي</option><option value="name" ${_rsort==='name'?'selected':''}>الاسم</option><option value="earned" ${_rsort==='earned'?'selected':''}>الأعلى استحقاقًا</option></select>`:''}
  ${byWorker.length?byWorker.map(x=>`<div class="item"><div class="lead"><span class="avatar">${esc(x.w.name.trim().charAt(0))}</span><div class="tx"><b>${esc(x.w.name)}</b><br><small><span class="num">${x.days}</span> يوم • <span class="num">${x.hours}</span> ساعة</small></div></div><div style="text-align:left"><b style="color:var(--green)">${money(x.earned)}</b><br><small>صافي ${money(x.earned-x.paid)}</small></div></div>`).join(''):emptyState(ic.chart,'لا توجد بيانات','سجّل يوميات ودفعات لعرض الكشف')}</div>
  <div class="actions"><button class="btn primary" onclick="printReportView()">${ic.print(17)} طباعة</button>${CU&&CU.isAdmin?`<button class="btn secondary" onclick="exportData()">${ic.down(17)} تصدير البيانات</button>`:''}</div>`;
 }
+/* worker balance for one month, carrying in everything owed from earlier months so the final
+   number is his real running balance and not just this month in isolation */
+function carryOverHtml(workerId,k){
+ const c=carryOver(db.logs.filter(l=>l.workerId===workerId),db.payments.filter(p=>p.workerId===workerId),k);
+ const line=(label,val,color)=>`<div class="item"><span class="muted">${label}</span><b ${color?`style="color:${color}"`:''}>${money(val)}</b></div>`;
+ return `<hr><span class="muted">حساب ${esc(workerName(workerId))} — ${monthLabel(k,true)}</span>
+ ${line('رصيد سابق (قبل هذا الشهر)',c.prev)}
+ ${line('مستحق الشهر',c.earned,'var(--green)')}
+ ${line('مدفوع في الشهر',c.paid,'var(--orange)')}
+ <div class="item"><b>الرصيد الحالي</b><b style="font-size:19px">${money(c.balance)}</b></div>`;
+}
 function printReportView(){
  const logs=[...filteredLogs()].sort((a,b)=>a.date.localeCompare(b.date));
- const rows=logs.map(reportRowHtml).join('')||`<tr><td colspan="8">لا توجد نتائج مطابقة</td></tr>`;
+ const rows=reportBodyRows(logs,false);
  const totalWage=logs.reduce((a,l)=>a+Number(l.wage||0),0),totalProfit=logs.reduce((a,l)=>a+Number(l.profit||0),0);
- const title=_rWorker?workerName(_rWorker):(_rProject?projectName(_rProject):'تقرير عام');
- printPreview(title,printDocHead(title,'تقرير مالي داخلي')+`<table class="ptable"><thead><tr><th>التاريخ</th><th>العامل</th><th>المشروع</th><th>الساعات</th><th>نوع العمل</th><th>أجر العامل</th><th>ربحك</th><th>المستحق من الشركة</th></tr></thead><tbody>${rows}</tbody><tfoot><tr><td colspan="5">الإجمالي</td><td>${money(totalWage)}</td><td>${money(totalProfit)}</td><td>${money(totalWage+totalProfit)}</td></tr></tfoot></table>`);
+ const base=_rWorker?workerName(_rWorker):(_rProject?projectName(_rProject):'تقرير عام');
+ const title=_rMonth?`${base} — ${monthLabel(_rMonth,true)}`:base;
+ printPreview(title,printDocHead(title,_rMonth?`تقرير مالي داخلي — ${monthLabel(_rMonth)}`:'تقرير مالي داخلي')+`<table class="ptable"><thead><tr><th>التاريخ</th><th>العامل</th><th>المشروع</th><th>الساعات</th><th>نوع العمل</th><th>أجر العامل</th><th>ربحك</th><th>المستحق من الشركة</th></tr></thead><tbody>${rows}</tbody><tfoot><tr><td colspan="5">الإجمالي</td><td>${money(totalWage)}</td><td>${money(totalProfit)}</td><td>${money(totalWage+totalProfit)}</td></tr></tfoot></table>`);
 }
 function accounts(){
  const s=stats();
@@ -526,15 +617,20 @@ function expenses(){
  else if(diff===0)settleLine='المصاريف متعادلة، لا يوجد تحويل مطلوب.';
  else if(diff>0)settleLine=`على أخيك تحويل ${money(diff/2)} لك لتعادل المصاريف قبل توزيع الأرباح.`;
  else settleLine=`عليك تحويل ${money(Math.abs(diff)/2)} لأخيك لتعادل المصاريف قبل توزيع الأرباح.`;
- const rows=list.map(x=>`<div class="item"><div class="lead"><span class="avatar">${x.partner==='me'?'أ':'خ'}</span><div class="tx"><b>${esc(x.note||'مصروف')}</b><br><small>${partnerLabel(x.partner)}${x.projectId?' • '+esc(projectName(x.projectId)):''} • <span class="num">${esc(x.date)}</span></small></div></div>
+ const expRow=x=>`<div class="item"><div class="lead"><span class="avatar">${x.partner==='me'?'أ':'خ'}</span><div class="tx"><b>${esc(x.note||'مصروف')}</b><br><small>${partnerLabel(x.partner)}${x.projectId?' • '+esc(projectName(x.projectId)):''} • <span class="num">${esc(x.date)}</span></small></div></div>
   <div class="rowicons"><b style="color:var(--orange)">${money(x.amount)}</b>${can('editDelete')?`
    <button class="iconbtn" title="تعديل" onclick="editExpense('${x.id}')">${ic.edit(16)}</button>
    <button class="iconbtn del" title="حذف" onclick="delExpense('${x.id}')">${ic.trash(16)}</button>`:''}
-  </div></div>`).join('')||emptyState(ic.pay,'لا توجد مصاريف','سجّل أول مصروف لتظهر هنا',`<button class="btn primary" onclick="newExpense()">${ic.plus(16)} مصروف جديد</button>`);
+  </div></div>`;
+ const rows=!list.length
+  ?emptyState(ic.pay,'لا توجد مصاريف','سجّل أول مصروف لتظهر هنا',`<button class="btn primary" onclick="newExpense()">${ic.plus(16)} مصروف جديد</button>`)
+  :_eMonth?list.map(expRow).join('')
+  :groupByMonth(list).map(([k,xs])=>`<details class="msec" open><summary><span>${monthLabel(k,true)}</span><span class="msum">${money(xs.reduce((a,x)=>a+Number(x.amount||0),0))}</span></summary><div class="mbody">${xs.map(expRow).join('')}</div></details>`).join('');
  const filterActive=_eFrom||_eTo;
  $('#main').innerHTML=`<div class="card"><h3>الفترة</h3>
- <div class="row">${F('ef','من تاريخ',`<input id="ef" type="date" value="${_eFrom}" onchange="_eFrom=this.value;expenses()">`)}${F('et','إلى تاريخ',`<input id="et" type="date" value="${_eTo}" onchange="_eTo=this.value;expenses()">`)}</div>
- ${filterActive?`<button class="btn secondary wide" onclick="_eFrom='';_eTo='';expenses()">${ic.x(15)} إزالة التصفية</button>`:''}</div>
+ <div class="field"><label for="em">الشهر</label>${monthBar('em',_eMonth,'setExpenseMonth')}${monthChips(db.expenses,_eMonth,'setExpenseMonth')}<div class="msg"></div></div>
+ <div class="row">${F('ef','من تاريخ',`<input id="ef" type="date" value="${_eFrom}" onchange="_eFrom=this.value;_eMonth='';expenses()">`)}${F('et','إلى تاريخ',`<input id="et" type="date" value="${_eTo}" onchange="_eTo=this.value;_eMonth='';expenses()">`)}</div>
+ ${filterActive?`<button class="btn secondary wide" onclick="_eFrom='';_eTo='';_eMonth='';expenses()">${ic.x(15)} إزالة التصفية</button>`:''}</div>
  <div class="card"><h3>تسوية المصاريف</h3><div class="grid">
  <div><span class="muted">مصاريفي</span><br><b style="color:var(--blue)">${money(meTotal)}</b></div><div><span class="muted">مصاريف أخي</span><br><b style="color:var(--purple)">${money(brTotal)}</b></div></div>
  <p class="muted" style="margin:10px 0 0">${settleLine}</p></div>
@@ -764,7 +860,14 @@ function workerDetail(workerId,projectId=''){
    <button class="btn danger" style="margin-top:10px" onclick="deleteOrphanLogs('${workerId}')">${ic.trash(16)} حذف كل اليوميات بدون مشروع</button></div></div></div>`:'';
   const byP={};logs.forEach(l=>{const k=l.projectId||'';byP[k]=byP[k]||{days:0,wage:0};byP[k].days++;byP[k].wage+=Number(l.wage||0)});
   const projRows=Object.entries(byP).map(([pid,v])=>`<div class="item"><div class="tx"><b>${esc(pid?projectName(pid):'بدون مشروع')}</b></div><div style="text-align:left"><span class="num">${v.days}</span> يوم${can('money')?` • ${money(v.wage)}`:''}</div></div>`).join('')||emptyState(ic.crane,'لا مشاريع','لم يعمل هذا العامل على أي مشروع بعد');
-  const allLogsHtml=[...logs].sort((a,b)=>b.date.localeCompare(a.date)).map(l=>logRow(l,true)).join('')||emptyState(ic.cal,'لا توجد يوميات','لا توجد يوميات لهذا العامل بعد');
+  /* diaries split per month, newest month open — native <details>, so no collapse state to track */
+  const monthGroups=groupByMonth([...logs].sort((a,b)=>b.date.localeCompare(a.date)));
+  const allLogsHtml=monthGroups.length?monthGroups.map(([k,ls],i)=>{
+   const wage=ls.reduce((a,l)=>a+Number(l.wage||0),0),hrs=ls.reduce((a,l)=>a+Number(l.hours||0),0);
+   return `<details class="msec"${i===0?' open':''}><summary><span>${monthLabel(k,true)}</span><span class="msum"><span class="num">${ls.length}</span> يوم · <span class="num">${hrs}</span> ساعة${can('money')?' · '+money(wage):''}</span></summary>
+   <div class="mbody">${ls.map(l=>logRow(l,true)).join('')}
+   ${k?`<button class="btn secondary wide" style="margin-top:8px" onclick="printWorkerFull('${workerId}','${k}')">${ic.print(15)} طباعة كشف ${monthLabel(k,true)}</button>`:''}</div></details>`;
+  }).join(''):emptyState(ic.cal,'لا توجد يوميات','لا توجد يوميات لهذا العامل بعد');
   const pays=db.payments.filter(p=>p.workerId===workerId).slice(-5).reverse();
   const paysHtml=pays.map(p=>`<div class="item"><div class="tx"><small><span class="num">${esc(p.date)}</span> • ${esc(p.note||'دفعة')}</small></div><div class="rowicons"><b style="color:var(--orange)">${money(p.amount)}</b>${can('editDelete')?`
    <button class="iconbtn" title="تعديل" onclick="editPayment('${p.id}')">${ic.edit(16)}</button>
@@ -773,10 +876,10 @@ function workerDetail(workerId,projectId=''){
    +orphanWarning
    +(can('money')?`<hr><div class="row3"><div><span class="muted">المستحق</span><br><b style="color:var(--green)">${money(earned)}</b></div><div><span class="muted">المدفوع</span><br><b style="color:var(--orange)">${money(paid)}</b></div><div><span class="muted">الرصيد</span><br><b>${money(earned-paid)}</b></div></div>`:'')
    +`<hr><span class="muted">المشاريع</span>${projRows}`
-   +`<hr><span class="muted">كل اليوميات</span>${allLogsHtml}`
+   +`<hr><span class="muted">اليوميات حسب الشهر</span>${allLogsHtml}`
    +(can('money')?`<hr><span class="muted">آخر الدفعات</span>${paysHtml}`:'')
    +`<div class="actions" style="margin-top:14px">${can('logs')?`<button class="btn primary" onclick="newLog('${workerId}')">${ic.plus(16)} يومية</button><button class="btn success" onclick="newPayment('${workerId}')">${ic.pay(16)} دفعة</button>`:''}</div>`
-   +(can('logs')?`<button class="btn secondary wide" style="margin-top:10px" onclick="printWorkerFull('${workerId}')">${ic.print(16)} طباعة كل سجلات العامل</button>`:'');
+   +(can('logs')?`<button class="btn secondary wide" style="margin-top:10px" onclick="printWorkerFull('${workerId}')">${ic.print(16)} طباعة كل الشهور (صفحة لكل شهر)</button>`:'');
  }
  viewSheet(w.name,body);
 }
@@ -918,7 +1021,14 @@ function companyReportHtml(projectId){
  const pays=[...db.projectPayments.filter(x=>x.projectId===projectId)].sort((a,b)=>a.date.localeCompare(b.date));
  const totalBilled=logs.reduce((a,l)=>a+Number(l.wage||0)+Number(l.profit||0),0);
  const totalReceived=pays.reduce((a,x)=>a+Number(x.amount||0),0);
- const logsRows=logs.map(l=>`<tr><td>${esc(l.date)}</td><td>${esc(workerName(l.workerId))}</td><td>${esc(l.hours||0)}</td><td>${esc(l.type||'')}</td><td>${money(Number(l.wage||0)+Number(l.profit||0))}</td></tr>`).join('')||`<tr><td colspan="5">لا يوجد سجلات</td></tr>`;
+ /* same month banding as the internal report, but every amount stays the company-billed figure —
+    never the worker's wage or your profit on its own */
+ const logsRows=logs.length?groupByMonth(logs,false).map(([k,ls])=>{
+  const sub=ls.reduce((a,l)=>a+Number(l.wage||0)+Number(l.profit||0),0);
+  return `<tr class="mhead"><td colspan="5">${monthLabel(k)}</td></tr>`
+   +ls.map(l=>`<tr><td>${esc(l.date)}</td><td>${esc(workerName(l.workerId))}</td><td>${esc(l.hours||0)}</td><td>${esc(l.type||'')}</td><td>${money(Number(l.wage||0)+Number(l.profit||0))}</td></tr>`).join('')
+   +`<tr class="msub"><td colspan="4">إجمالي ${monthLabel(k,true)} — <span class="num">${ls.length}</span> يوم</td><td>${money(sub)}</td></tr>`;
+ }).join(''):`<tr><td colspan="5">لا يوجد سجلات</td></tr>`;
  const paysRows=pays.map(x=>`<tr><td>${esc(x.date)}</td><td>${esc(x.note||'')}</td><td>${money(x.amount)}</td></tr>`).join('')||`<tr><td colspan="3">لا يوجد دفعات</td></tr>`;
  return `<p class="muted">${esc(p?.location||'')}${p?.start?' • '+esc(p.start):''}</p>
  <h4>سجلات العمل</h4><table class="ptable"><thead><tr><th>التاريخ</th><th>العامل</th><th>الساعات</th><th>نوع العمل</th><th>المبلغ</th></tr></thead><tbody>${logsRows}</tbody><tfoot><tr><td colspan="4">الإجمالي</td><td>${money(totalBilled)}</td></tr></tfoot></table>
@@ -930,29 +1040,43 @@ function printProject(id){
  printPreview(title,printDocHead(title,'تقرير مشروع')+companyReportHtml(id));
 }
 /* worker-facing print: handed to the worker to see his own record. Must NEVER show your profit or the company-billed total — only his wage. Wage figures still gated by can('money') so a limited-access user printing this doesn't see money either. */
-function printWorkerFull(workerId){
+function printWorkerFull(workerId,monthKey=''){
  const w=db.workers.find(x=>x.id===workerId);
  if(!w)return;
- const logs=[...db.logs.filter(l=>l.workerId===workerId)].sort((a,b)=>a.date.localeCompare(b.date));
+ const allLogs=db.logs.filter(l=>l.workerId===workerId);
+ const allPays=db.payments.filter(p=>p.workerId===workerId);
  const showMoney=can('money');
- const byProj={};
- logs.forEach(l=>{const k=l.projectId||'';(byProj[k]=byProj[k]||[]).push(l)});
- const sections=Object.entries(byProj).map(([pid,ls])=>{
-  const rows=ls.map(l=>`<tr><td>${esc(l.date)}</td><td>${esc(l.hours||0)}</td><td>${esc(l.type||'')}</td>${showMoney?`<td>${money(l.wage)}</td>`:''}</tr>`).join('');
-  const subtotal=ls.reduce((a,l)=>a+Number(l.wage||0),0);
-  return `<h4>${esc(pid?projectName(pid):'بدون مشروع')}</h4><table class="ptable"><thead><tr><th>التاريخ</th><th>الساعات</th><th>نوع العمل</th>${showMoney?'<th>أجر العامل</th>':''}</tr></thead><tbody>${rows}</tbody>${showMoney?`<tfoot><tr><td colspan="3">إجمالي أجر العامل في هذا المشروع</td><td>${money(subtotal)}</td></tr></tfoot>`:''}</table>`;
+ /* month is the outer section and the project becomes a column: one month = one page = one payslip
+    the worker signs. Oldest month first so the carry-over lines read forward in time. */
+ const groups=groupByMonth([...allLogs].sort((a,b)=>a.date.localeCompare(b.date)),false)
+  .filter(([k])=>!monthKey||k===monthKey);
+ const blocks=groups.map(([k,ls])=>{
+  const rows=ls.map(l=>`<tr><td>${esc(l.date)}</td><td>${esc(l.projectId?projectName(l.projectId):'بدون مشروع')}</td><td>${esc(l.hours||0)}</td><td>${esc(l.type||'')}</td>${showMoney?`<td>${money(l.wage)}</td>`:''}</tr>`).join('');
+  const c=carryOver(allLogs,allPays,k);
+  const foot=`<tfoot><tr><td colspan="${showMoney?4:3}">إجمالي الشهر — <span class="num">${c.days}</span> يوم · <span class="num">${c.hours}</span> ساعة</td>${showMoney?`<td>${money(c.earned)}</td>`:''}</tr></tfoot>`;
+  const monthPays=[...allPays.filter(p=>ym(p.date)===k)].sort((a,b)=>a.date.localeCompare(b.date));
+  const paysTable=showMoney&&monthPays.length?`<table class="ptable"><thead><tr><th>تاريخ الدفعة</th><th>ملاحظات</th><th>المبلغ</th></tr></thead><tbody>${monthPays.map(p=>`<tr><td>${esc(p.date)}</td><td>${esc(p.note||'')}</td><td>${money(p.amount)}</td></tr>`).join('')}</tbody><tfoot><tr><td colspan="2">مدفوع في الشهر</td><td>${money(c.paid)}</td></tr></tfoot></table>`:'';
+  const settle=showMoney?`<table class="month-sum"><tbody>
+   <tr><td>رصيد سابق (قبل هذا الشهر)</td><td>${money(c.prev)}</td></tr>
+   <tr><td>مستحق الشهر</td><td>${money(c.earned)}</td></tr>
+   <tr><td>مدفوع في الشهر</td><td>${money(c.paid)}</td></tr>
+   <tr class="final"><td>الرصيد الحالي</td><td>${money(c.balance)}</td></tr></tbody></table>`:'';
+  return `<div class="month-block"><div class="month-title">${monthLabel(k)}</div>
+   <table class="ptable"><thead><tr><th>التاريخ</th><th>المشروع</th><th>الساعات</th><th>نوع العمل</th>${showMoney?'<th>أجر العامل</th>':''}</tr></thead><tbody>${rows}</tbody>${foot}</table>
+   ${paysTable}${settle}${sigBlock()}</div>`;
  }).join('')||'<p>لا توجد يوميات</p>';
- let summary='',paysSection='';
- if(showMoney){
-  const totalEarned=logs.reduce((a,l)=>a+Number(l.wage||0),0);
-  const pays=[...db.payments.filter(p=>p.workerId===workerId)].sort((a,b)=>a.date.localeCompare(b.date));
-  const totalPaid=pays.reduce((a,p)=>a+Number(p.amount||0),0);
+ /* the all-time figures only make sense on the full statement; a single-month payslip already
+    ends with the running balance for that month */
+ let summary='';
+ if(showMoney&&!monthKey){
+  const totalEarned=allLogs.reduce((a,l)=>a+Number(l.wage||0),0);
+  const totalPaid=allPays.reduce((a,p)=>a+Number(p.amount||0),0);
   summary=`<p><b>إجمالي المستحق:</b> ${money(totalEarned)} &nbsp; <b>المدفوع:</b> ${money(totalPaid)} &nbsp; <b>الرصيد:</b> ${money(totalEarned-totalPaid)}</p>`;
-  const paysRows=pays.map(p=>`<tr><td>${esc(p.date)}</td><td>${esc(p.note||'')}</td><td>${money(p.amount)}</td></tr>`).join('')||`<tr><td colspan="3">لا يوجد دفعات</td></tr>`;
-  paysSection=`<h4>الدفعات</h4><table class="ptable"><thead><tr><th>التاريخ</th><th>ملاحظات</th><th>المبلغ</th></tr></thead><tbody>${paysRows}</tbody><tfoot><tr><td colspan="2">الإجمالي</td><td>${money(totalPaid)}</td></tr></tfoot></table>`;
  }
  const extra=[can('private')&&w.idNumber?'هوية <span class="num">'+esc(w.idNumber)+'</span>':'',w.bankName?'بنك: '+esc(w.bankName):'',w.bankAccount?'حساب: <span class="num">'+esc(w.bankAccount)+'</span>':''].filter(Boolean).join(' • ');
- printPreview(w.name,printDocHead(w.name,'كشف حساب عامل')+`<p class="muted">${esc(w.job||'')}${w.phone?' • '+esc(w.phone):''}${extra?' • '+extra:''}</p>${summary}${sections}${paysSection}`+sigBlock());
+ const title=monthKey?`${w.name} — ${monthLabel(monthKey,true)}`:w.name;
+ const docType=monthKey?`كشف حساب عامل — ${monthLabel(monthKey)}`:'كشف حساب عامل — كل الشهور';
+ printPreview(title,printDocHead(title,docType)+`<p class="muted">${esc(w.job||'')}${w.phone?' • '+esc(w.phone):''}${extra?' • '+extra:''}</p>${summary}${blocks}`);
 }
 
 /* ---------- logs CRUD ---------- */
