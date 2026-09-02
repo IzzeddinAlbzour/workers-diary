@@ -135,9 +135,27 @@ assert.deepStrictEqual(
 
 // ---- company/project print: month banded, billed amounts only ----
 run(`printProject('p1')`);
-assert.ok(printed.includes('شهر 6 / 2026') && printed.includes('شهر 7 / 2026'), 'project report bands by month');
+assert.ok(printed.includes('شهر 6 / 2026') && printed.includes('شهر 7 / 2026'), 'project report bands by month, all months by default');
 assert.ok(printed.includes('class="msub"'), 'each month gets a subtotal');
 assert.ok(!printed.includes('أجر العامل'), 'company sheet never labels the worker wage');
+
+// ---- company/project print: a single month can be chosen, no banding, other months excluded ----
+run(`printProject('p1','2026-07')`);
+assert.ok(printed.includes('شهر 7 / 2026'), 'single-month project print titled with the month');
+assert.ok(!printed.includes('شهر 6 / 2026'), 'other project months excluded when one is picked');
+assert.ok(!printed.includes('class="mhead"'), 'no month banding needed for a single-month print');
+assert.ok(printed.includes('2026-07-01'), 'july project row present (p1\'s only july log)');
+assert.ok(!printed.includes('2026-06-30'), 'june project row excluded');
+assert.ok(printed.includes('دفعة أولى'), 'project payment dated in july still included');
+
+// ---- the picker offers only months the project actually has, defaults to "all months" ----
+run(`printProjectPicker('p1')`);
+let picker = lastCreated.innerHTML;
+assert.ok(picker.includes('كل الشهور'), 'picker offers an all-months option');
+assert.ok(picker.includes('شهر 6 / 2026') && picker.includes('شهر 7 / 2026'), 'picker chips list p1\'s real months');
+assert.ok(!picker.includes('شهر 8 / 2026'), 'picker does not offer a month p1 has no logs in (that log is on p2)');
+run(`pickProjectPrintMonth('2026-07')`);
+assert.ok(lastCreated.innerHTML.includes('سيُطبع شهر واحد فقط'), 'picking a month updates the confirmation line');
 
 // ---- internal report print follows the same month rules ----
 run(`_rWorker='';_rProject='';setReportMonth('');printReportView()`);

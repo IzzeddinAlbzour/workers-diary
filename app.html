@@ -512,7 +512,7 @@ function filterProjects(){
    </div></div>
    <div class="row3"><div><span class="muted">اليوميات</span><br><b class="num">${logs.length}</b></div>${can('money')?`<div><span class="muted">أجور مسجلة</span><br><b>${money(total)}</b></div>`:'<div></div>'}${can('projPay')?`<div><span class="muted">دفعات مقبوضة</span><br><b style="color:var(--green)">${money(received)}</b></div>`:'<div></div>'}</div>
    ${chips?`<hr><span class="muted">العمال في المشروع</span><div style="margin-top:5px">${chips}</div>`:''}
-   ${can('projPay')?`<hr>${payRows||''}<div class="actions" style="margin-top:${payRows?'10px':'0'}"><button class="btn success" onclick="newProjectPayment('${p.id}')">${ic.plus(15)} دفعة مقبوضة</button><button class="btn secondary" onclick="printProject('${p.id}')">${ic.print(15)} طباعة كشف المتعهد</button></div>`:''}</div>`;
+   ${can('projPay')?`<hr>${payRows||''}<div class="actions" style="margin-top:${payRows?'10px':'0'}"><button class="btn success" onclick="newProjectPayment('${p.id}')">${ic.plus(15)} دفعة مقبوضة</button><button class="btn secondary" onclick="printProjectPicker('${p.id}')">${ic.print(15)} طباعة كشف المتعهد</button></div>`:''}</div>`;
  }).join(''):(db.projects.length
    ?`<div class="card">${emptyState(ic.search,'لا نتائج مطابقة','جرّب اسمًا أو موقعًا آخر')}</div>`
    :`<div class="card">${emptyState(ic.crane,'لا توجد مشاريع بعد','أضف مشروعًا لربط اليوميات به',`<button class="btn primary" onclick="newProject()">${ic.plus(16)} إضافة مشروع</button>`)}</div>`);
@@ -1014,30 +1014,56 @@ function delProjectPayment(id){
   undoToast('تم حذف الدفعة',()=>{db.projectPayments.push(pp);window.api.addProjectPayment(pp);render();toast('تم استرجاع الدفعة');});
  });
 }
-/* company-facing project print: shows the billed amount only, never worker wage or your profit */
-function companyReportHtml(projectId){
+/* company-facing project print: shows the billed amount only, never worker wage or your profit.
+   monthKey='' prints every month, banded with a subtotal each; one month key prints that month
+   alone, flat (no banding needed — the whole table already is that one month). */
+function companyReportHtml(projectId,monthKey=''){
  const p=db.projects.find(x=>x.id===projectId);
- const logs=[...db.logs.filter(l=>l.projectId===projectId)].sort((a,b)=>a.date.localeCompare(b.date));
- const pays=[...db.projectPayments.filter(x=>x.projectId===projectId)].sort((a,b)=>a.date.localeCompare(b.date));
+ let logs=[...db.logs.filter(l=>l.projectId===projectId)].sort((a,b)=>a.date.localeCompare(b.date));
+ let pays=[...db.projectPayments.filter(x=>x.projectId===projectId)].sort((a,b)=>a.date.localeCompare(b.date));
+ if(monthKey){logs=logs.filter(l=>ym(l.date)===monthKey);pays=pays.filter(x=>ym(x.date)===monthKey);}
  const totalBilled=logs.reduce((a,l)=>a+Number(l.wage||0)+Number(l.profit||0),0);
  const totalReceived=pays.reduce((a,x)=>a+Number(x.amount||0),0);
- /* same month banding as the internal report, but every amount stays the company-billed figure —
-    never the worker's wage or your profit on its own */
- const logsRows=logs.length?groupByMonth(logs,false).map(([k,ls])=>{
-  const sub=ls.reduce((a,l)=>a+Number(l.wage||0)+Number(l.profit||0),0);
-  return `<tr class="mhead"><td colspan="5">${monthLabel(k)}</td></tr>`
-   +ls.map(l=>`<tr><td>${esc(l.date)}</td><td>${esc(workerName(l.workerId))}</td><td>${esc(l.hours||0)}</td><td>${esc(l.type||'')}</td><td>${money(Number(l.wage||0)+Number(l.profit||0))}</td></tr>`).join('')
-   +`<tr class="msub"><td colspan="4">إجمالي ${monthLabel(k,true)} — <span class="num">${ls.length}</span> يوم</td><td>${money(sub)}</td></tr>`;
- }).join(''):`<tr><td colspan="5">لا يوجد سجلات</td></tr>`;
+ const logRow=l=>`<tr><td>${esc(l.date)}</td><td>${esc(workerName(l.workerId))}</td><td>${esc(l.hours||0)}</td><td>${esc(l.type||'')}</td><td>${money(Number(l.wage||0)+Number(l.profit||0))}</td></tr>`;
+ const logsRows=!logs.length?`<tr><td colspan="5">لا يوجد سجلات</td></tr>`
+  :monthKey?logs.map(logRow).join('')
+  :groupByMonth(logs,false).map(([k,ls])=>{
+    const sub=ls.reduce((a,l)=>a+Number(l.wage||0)+Number(l.profit||0),0);
+    return `<tr class="mhead"><td colspan="5">${monthLabel(k)}</td></tr>`+ls.map(logRow).join('')
+     +`<tr class="msub"><td colspan="4">إجمالي ${monthLabel(k,true)} — <span class="num">${ls.length}</span> يوم</td><td>${money(sub)}</td></tr>`;
+   }).join('');
  const paysRows=pays.map(x=>`<tr><td>${esc(x.date)}</td><td>${esc(x.note||'')}</td><td>${money(x.amount)}</td></tr>`).join('')||`<tr><td colspan="3">لا يوجد دفعات</td></tr>`;
  return `<p class="muted">${esc(p?.location||'')}${p?.start?' • '+esc(p.start):''}</p>
  <h4>سجلات العمل</h4><table class="ptable"><thead><tr><th>التاريخ</th><th>العامل</th><th>الساعات</th><th>نوع العمل</th><th>المبلغ</th></tr></thead><tbody>${logsRows}</tbody><tfoot><tr><td colspan="4">الإجمالي</td><td>${money(totalBilled)}</td></tr></tfoot></table>
  <h4>الدفعات المقبوضة</h4><table class="ptable"><thead><tr><th>التاريخ</th><th>ملاحظات</th><th>المبلغ</th></tr></thead><tbody>${paysRows}</tbody><tfoot><tr><td colspan="2">الإجمالي</td><td>${money(totalReceived)}</td></tr></tfoot></table>`;
 }
-function printProject(id){
+function printProject(id,monthKey=''){
  const p=db.projects.find(x=>x.id===id);
- const title=p?p.name:'مشروع';
- printPreview(title,printDocHead(title,'تقرير مشروع')+companyReportHtml(id));
+ const base=p?p.name:'مشروع';
+ const title=monthKey?`${base} — ${monthLabel(monthKey,true)}`:base;
+ const docType=monthKey?`تقرير مشروع — ${monthLabel(monthKey)}`:'تقرير مشروع — كل الشهور';
+ printPreview(title,printDocHead(title,docType)+companyReportHtml(id,monthKey));
+}
+/* month picker shown before printing a project statement — lets the contractor choose one month
+   or the whole history instead of always getting every month at once */
+let _ppMonth='',_ppRedraw=null;
+function pickProjectPrintMonth(k){_ppMonth=k||'';if(_ppRedraw)_ppRedraw()}
+function printProjectPicker(id){
+ _ppMonth='';
+ const p=db.projects.find(x=>x.id===id);
+ const logs=db.logs.filter(l=>l.projectId===id);
+ const wrap=document.createElement('div');wrap.id='modal';wrap.className='overlay';
+ wrap.addEventListener('mousedown',e=>{if(e.target===wrap)closeModal()});
+ document.body.appendChild(wrap);
+ _ppRedraw=()=>{
+  wrap.innerHTML=`<div class="sheet"><div class="head"><span>طباعة كشف ${esc(p?p.name:'المشروع')}</span><button class="x" onclick="closeModal()" title="إغلاق" aria-label="إغلاق">${ic.x(17)}</button></div><div class="body">
+   <div class="field"><label>الشهر</label>${monthBar('ppm',_ppMonth,'pickProjectPrintMonth')}${monthChips(logs,_ppMonth,'pickProjectPrintMonth')}</div>
+   <p class="muted" style="margin:0 0 14px">${_ppMonth?`سيُطبع شهر واحد فقط: <b>${monthLabel(_ppMonth)}</b>`:'سيُطبع كشف كامل بكل الشهور.'}</p>
+   <div class="actions"><button class="btn primary" id="ppGo">${ic.print(16)} طباعة</button><button class="btn secondary" onclick="closeModal()">إلغاء</button></div>
+  </div></div>`;
+  $('#ppGo').onclick=()=>{const m=_ppMonth;closeModal();printProject(id,m)};
+ };
+ _ppRedraw();
 }
 /* worker-facing print: handed to the worker to see his own record. Must NEVER show your profit or the company-billed total — only his wage. Wage figures still gated by can('money') so a limited-access user printing this doesn't see money either. */
 function printWorkerFull(workerId,monthKey=''){
