@@ -3,6 +3,9 @@
    math can be asserted from node (test-month.js) without booting Electron. */
 (function (root) {
   const AR_MONTHS = ['يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو', 'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر'];
+  const HE_MONTHS = ['ינואר', 'פברואר', 'מרץ', 'אפריל', 'מאי', 'יוני', 'יולי', 'אוגוסט', 'ספטמבר', 'אוקטובר', 'נובמבר', 'דצמבר'];
+  const MONTH_WORD = { ar: 'شهر', he: 'חודש' };
+  const NO_DATE = { ar: 'بدون تاريخ', he: 'ללא תאריך' };
 
   const r2 = n => Math.round((Number(n) || 0) * 100) / 100;
 
@@ -12,11 +15,13 @@
     return /^\d{4}-\d{2}/.test(s) ? s.slice(0, 7) : '';
   };
 
-  /** "2026-07" -> "شهر 7 / 2026 (يوليو)", or "شهر 7 / 2026" when short. "" -> "بدون تاريخ" */
-  const monthLabel = (k, short) => {
-    if (!k) return 'بدون تاريخ';
+  /** "2026-07" -> "شهر 7 / 2026 (يوليو)" (ar) or "חודש 7 / 2026 (יולי)" (he); short drops the name. "" -> "no date" in that language */
+  const monthLabel = (k, short, lang = 'ar') => {
+    const names = lang === 'he' ? HE_MONTHS : AR_MONTHS;
+    const word = MONTH_WORD[lang] || MONTH_WORD.ar;
+    if (!k) return (lang === 'he' ? NO_DATE.he : NO_DATE.ar);
     const y = k.slice(0, 4), m = Number(k.slice(5, 7));
-    return short ? `شهر ${m} / ${y}` : `شهر ${m} / ${y} (${AR_MONTHS[m - 1] || ''})`;
+    return short ? `${word} ${m} / ${y}` : `${word} ${m} / ${y} (${names[m - 1] || ''})`;
   };
 
   /** "2026-07" -> {from:"2026-07-01", to:"2026-07-31"} — `to` via day 0 of next month */

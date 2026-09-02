@@ -1,14 +1,14 @@
 {
   "name": "workers-diary",
   "productName": "يوميات العمال",
-  "version": "1.6.1",
+  "version": "1.7.0",
   "description": "إدارة العمال والمشاريع والحسابات",
   "main": "main.js",
   "author": "Ezz Al-Bzour",
   "license": "MIT",
   "scripts": {
     "start": "electron .",
-    "test": "node test-data.js && node test-month.js && node test-render.js",
+    "test": "node test-data.js && node test-month.js && node test-i18n.js && node test-render.js",
     "dist": "electron-builder --mac --x64"
   },
   "dependencies": {
@@ -29,6 +29,7 @@
       "db.js",
       "license.js",
       "month.js",
+      "i18n.js",
       "app.html",
       "fonts/**",
       "build/icon.icns"

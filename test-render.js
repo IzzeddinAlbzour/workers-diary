@@ -9,9 +9,10 @@ const vm = require('vm');
 // ---- stub DOM ----
 const nodes = {};
 const el = () => ({
-  innerHTML: '', outerHTML: '', value: '', textContent: '', style: {}, dataset: {},
+  innerHTML: '', outerHTML: '', value: '', textContent: '', style: {}, dataset: {}, lang: '',
   classList: { add() {}, remove() {}, toggle() {}, contains: () => false },
   focus() {}, remove() {}, appendChild() {}, addEventListener() {}, removeEventListener() {},
+  setAttribute() {}, getAttribute() { return null; },
   querySelector: () => el(), querySelectorAll: () => [], closest: () => el()
 });
 let lastCreated = null;
@@ -20,20 +21,24 @@ const document = {
   querySelectorAll: () => [],
   createElement: () => (lastCreated = el()),
   addEventListener() {},
-  body: { appendChild() {}, classList: { add() {}, remove() {} } }
+  body: { appendChild() {}, classList: { add() {}, remove() {} } },
+  documentElement: el()
 };
 
 const ctx = vm.createContext({
   console, document, setTimeout, clearTimeout, crypto,
-  window: { api: {}, print() {}, addEventListener() {}, removeEventListener() {} },
+  window: { api: { getLang: async () => 'ar', setLang: async () => true }, print() {}, addEventListener() {}, removeEventListener() {} },
   navigator: { clipboard: { writeText() {} } }
 });
 vm.runInContext(fs.readFileSync(__dirname + '/month.js', 'utf8'), ctx);
+vm.runInContext(fs.readFileSync(__dirname + '/i18n.js', 'utf8'), ctx);
 
 const html = fs.readFileSync(__dirname + '/app.html', 'utf8');
-// the page must actually pull month.js in, and the packaged build must ship it
+// the page must actually pull month.js and i18n.js in, and the packaged build must ship both
 assert.ok(/<script src="month\.js"><\/script>/.test(html), 'app.html loads month.js');
+assert.ok(/<script src="i18n\.js"><\/script>/.test(html), 'app.html loads i18n.js');
 assert.ok(require('./package.json').build.files.includes('month.js'), 'month.js is packaged into the app');
+assert.ok(require('./package.json').build.files.includes('i18n.js'), 'i18n.js is packaged into the app');
 const script = /<script(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/.exec(html)[1].replace(/\bboot\(\);\s*$/, '');
 vm.runInContext(script, ctx);
 const run = code => vm.runInContext(code, ctx);
@@ -114,7 +119,7 @@ assert.ok(profitNeedle.length > 3, 'profit needle is a real rendered amount');
 run(`printWorkerFull('w1','2026-07')`);
 assert.ok(printed.includes('شهر 7 / 2026'), 'single-month payslip is titled with the month');
 assert.ok(!printed.includes('شهر 8 / 2026'), 'a single-month payslip carries no other month');
-assert.ok(printed.includes('<th>المشروع</th>'), 'project is a column, not the outer grouping');
+assert.ok(printed.includes('<th>مشروع</th>'), 'project is a column, not the outer grouping');
 assert.ok(printed.includes('بيت شيمش') && printed.includes('رام الله'), 'both projects appear as rows inside the month');
 assert.ok(printed.includes('رصيد سابق (قبل هذا الشهر)'), 'payslip carries the previous balance in');
 assert.ok(printed.includes('توقيع العامل'), 'payslip is signable');
@@ -174,5 +179,29 @@ run(`setExpenseMonth('2026-07')`);
 out = main();
 assert.ok(out.includes('بنزين') && !out.includes('أدوات'), 'only the picked month\'s expenses');
 assert.ok(out.includes('على أخيك تحويل'), 'settlement recomputed for that month alone');
+
+// ---- Hebrew mode: every page still renders, chrome is actually Hebrew, numbers use Latin digits ----
+run(`LANG='he';document.documentElement.lang='he';`);
+for (const p of ['home', 'workers', 'projects', 'reports', 'accounts', 'expenses']) {
+  run(`${p}()`);
+  assert.ok(main().length > 100, `${p}() renders markup in Hebrew mode`);
+}
+run(`buildNav();render();`);
+assert.ok(document.querySelector('#nav').innerHTML.includes('ראשי'), 'nav switches to Hebrew labels');
+assert.ok(!document.querySelector('#nav').innerHTML.includes('الرئيسية'), 'no leftover Arabic nav label');
+run(`reports()`);
+out = main();
+assert.ok(out.includes('כל החודשים'), 'Hebrew month-filter chrome renders');
+assert.ok(!out.includes('كل الشهور'), 'no leftover Arabic month-filter chrome');
+run(`workerDetail('w1')`);
+sheet = lastCreated.innerHTML;
+assert.ok(sheet.includes('יולי') || /חודש \d+ \/ 2026/.test(sheet), 'month sections use Hebrew month names');
+run(`printWorkerFull('w1','2026-07')`);
+assert.ok(printed.includes('יולי'), 'Hebrew payslip title uses the Hebrew month name');
+const hebrewMoneySample = run(`money(1234)`);
+assert.ok(!/[٠-٩]/.test(hebrewMoneySample), 'Hebrew mode renders Latin digits, not Arabic-Indic');
+assert.ok(/1,?234/.test(hebrewMoneySample), 'Hebrew money renders the Latin digits 1234');
+// switch back so nothing downstream in a future edit accidentally depends on Hebrew being sticky
+run(`LANG='ar';document.documentElement.lang='ar';`);
 
 console.log('ALL RENDER TESTS PASSED');

@@ -43,5 +43,7 @@ contextBridge.exposeInMainWorld('api', {
   pickBackupDir: call('pickBackupDir'),
   backupNow: call('backupNow'),
   listBackups: call('listBackups'),
-  restoreBackupFile: call('restoreBackupFile')
+  restoreBackupFile: call('restoreBackupFile'),
+  getLang: call('getLang'),
+  setLang: call('setLang')
 });

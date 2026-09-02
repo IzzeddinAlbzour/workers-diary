@@ -230,6 +230,8 @@ app.whenReady().then(() => {
     return r.canceled || !r.filePaths.length ? null : r.filePaths[0];
   });
   ipcMain.handle('backupNow', () => writeAutoBackup(true));
+  ipcMain.handle('getLang', () => db.getSetting('lang', 'ar'));
+  ipcMain.handle('setLang', (e, l) => { db.setSetting('lang', l === 'he' ? 'he' : 'ar'); return true; });
   ipcMain.handle('listBackups', () => {
     try {
       const s = backupSettings();

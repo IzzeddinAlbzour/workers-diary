@@ -261,14 +261,15 @@ nav button.active::before{content:"";position:absolute;top:0;width:26px;height:3
 </header>
 <main><div id="pagewrap"><div id="main"></div></div>
 <p style="text-align:center;color:#9aa7bd;font-size:12px;font-weight:500;margin:4px 0 0">
- صنع بواسطة Ezz Al-Bzour © 2026<br>
- واتساب <span class="num" dir="ltr">+972 56 947 2423</span>
+ <span id="madeBy">صنع بواسطة Ezz Al-Bzour © 2026</span><br>
+ <span id="whatsappLbl">واتساب</span> <span class="num" dir="ltr">+972 56 947 2423</span>
 </p></main>
 <nav id="nav"></nav>
 </div>
 <div id="toast"></div>
 <div id="printSheet"></div>
 <script src="month.js"></script>
+<script src="i18n.js"></script>
 <script>
 /* ---------- icon system: one stroke family (24px grid, 2px, round) ---------- */
 const I = (d,s=18)=>`<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${d}</svg>`;
@@ -296,16 +297,18 @@ const ic = {
  chevL: d=>I('<path d="m15 5-7 7 7 7"/>',d)
 };
 
+/* titleKey/navKey instead of baked-in strings — PAGES is built once at script load, before LANG
+   is known, so titles must resolve through T() at render time, not at array-definition time */
 const PAGES=[
- {id:'home', title:'يوميات العمال', icon:ic.home, ok:()=>true},
- {id:'workers', title:'العمال', icon:ic.users, ok:()=>true},
- {id:'projects', title:'المشاريع', icon:ic.crane, ok:()=>true},
- {id:'reports', title:'التقارير', icon:ic.chart, ok:()=>can('money')},
- {id:'accounts', title:'الحسابات', icon:ic.wallet, ok:()=>can('money')},
- {id:'expenses', title:'المصاريف', icon:ic.pay, ok:()=>can('money')},
- {id:'settings', title:'الإعدادات', icon:ic.gear, ok:()=>CU&&CU.isAdmin}
+ {id:'home', titleKey:'appTitle', icon:ic.home, ok:()=>true},
+ {id:'workers', titleKey:'navWorkers', icon:ic.users, ok:()=>true},
+ {id:'projects', titleKey:'navProjects', icon:ic.crane, ok:()=>true},
+ {id:'reports', titleKey:'navReports', icon:ic.chart, ok:()=>can('money')},
+ {id:'accounts', titleKey:'navAccounts', icon:ic.wallet, ok:()=>can('money')},
+ {id:'expenses', titleKey:'navExpenses', icon:ic.pay, ok:()=>can('money')},
+ {id:'settings', titleKey:'navSettings', icon:ic.gear, ok:()=>CU&&CU.isAdmin}
 ];
-const LABELS={home:'الرئيسية',workers:'العمال',projects:'المشاريع',reports:'التقارير',accounts:'الحسابات',expenses:'المصاريف',settings:'الإعدادات'};
+const LABELS={home:'navHome',workers:'navWorkers',projects:'navProjects',reports:'navReports',accounts:'navAccounts',expenses:'navExpenses',settings:'navSettings'};
 
 const KEY='workersDiary_v1';
 let db={workers:[],projects:[],logs:[],payments:[],projectPayments:[],expenses:[]};
@@ -317,17 +320,15 @@ let _eFrom='',_eTo='';
 let _eMonth='';
 let _openWorker=null; // workerId whose full-profile viewSheet is currently open, for live refresh after edits
 let CU=null; // current user {id,name,isAdmin,perms}
+let LANG='ar'; // 'ar' | 'he' — one shared app-wide setting, loaded before boot() renders anything
+const T=k=>t(k,LANG);
+const ML=(k,short)=>monthLabel(k,short,LANG);
 const can=k=>!!CU&&(CU.isAdmin||!!CU.perms[k]);
-const PERMS=[
- ['logs','تسجيل يوميات ودفعات'],
- ['editDelete','تعديل وحذف السجلات'],
- ['money','رؤية الحسابات والأرصدة'],
- ['private','بيانات العمال الخاصة (هوية/بنك/صور)'],
- ['projPay','دفعات المشاريع المقبوضة'],
- ['manage','إدارة العمال والمشاريع']
-];
+const PERM_KEYS=[['logs','permLogs'],['editDelete','permEditDelete'],['money','permMoney'],['private','permPrivate'],['projPay','permProjPay'],['manage','permManage']];
+const PERMS=()=>PERM_KEYS.map(([k,tk])=>[k,T(tk)]);
 const $=s=>document.querySelector(s);
-const money=n=>`<span class="num">${Number(n||0).toLocaleString('ar-EG',{maximumFractionDigits:2})} ₪</span>`;
+/* Hebrew UI uses Latin digits (he-IL); Arabic keeps its Arabic-Indic digits (ar-EG) */
+const money=n=>`<span class="num">${Number(n||0).toLocaleString(LANG==='he'?'he-IL':'ar-EG',{maximumFractionDigits:2})} ₪</span>`;
 const today=()=>new Date().toISOString().slice(0,10);
 function esc(s){return String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))}
 /* accept Arabic-Indic digits (٠١٢٣ / ۰۱۲۳) and normalize to Latin so Number() works */
@@ -335,21 +336,21 @@ function digits(el){
  const v=el.value.replace(/[٠-٩]/g,d=>'٠١٢٣٤٥٦٧٨٩'.indexOf(d)).replace(/[۰-۹]/g,d=>'۰۱۲۳۴۵۶۷۸۹'.indexOf(d)).replace(/[٫,]/g,'.').replace(/[^0-9.]/g,'');
  if(v!==el.value)el.value=v;
 }
-function workerName(id){return db.workers.find(x=>x.id==id)?.name||'غير محدد'}
-function projectName(id){return db.projects.find(x=>x.id==id)?.name||'غير محدد'}
+function workerName(id){return db.workers.find(x=>x.id==id)?.name||T('notSet')}
+function projectName(id){return db.projects.find(x=>x.id==id)?.name||T('notSet')}
 /* ---------- month filtering (ym/monthLabel/monthRange/stepMonth/groupByMonth/carryOver come from month.js) ----------
    The month picker is a shortcut over the from/to filter that already exists: picking a month writes its
    first and last day into _rFrom/_rTo, so there stays exactly one filter path instead of two that can disagree. */
 function monthBar(id,value,setter){
  const step=(n,label,icon)=>`<button class="step" title="${label}" aria-label="${label}" ${value?'':'disabled'} onclick="${setter}('${value?stepMonth(value,n):''}')">${icon(16)}</button>`;
- return `<div class="monthbar">${step(-1,'الشهر السابق',ic.chevR)}<input id="${id}" type="month" value="${value}" onchange="${setter}(this.value)">${step(1,'الشهر التالي',ic.chevL)}</div>`;
+ return `<div class="monthbar">${step(-1,T('prevMonth'),ic.chevR)}<input id="${id}" type="month" value="${value}" onchange="${setter}(this.value)">${step(1,T('nextMonth'),ic.chevL)}</div>`;
 }
 /* one chip per month that actually has data, so the months are discoverable without hunting in the picker */
 function monthChips(rows,current,setter){
  const months=monthsOf(rows).filter(Boolean).slice(0,12);
  if(!months.length)return '';
  const chip=(k,label)=>`<button class="chip" style="${k===current?'background:var(--navy);color:#fff':''}" onclick="${setter}('${k}')">${label}</button>`;
- return `<div style="margin-top:8px;display:flex;flex-wrap:wrap;gap:2px">${chip('','كل الشهور')}${months.map(k=>chip(k,monthLabel(k,true))).join('')}</div>`;
+ return `<div style="margin-top:8px;display:flex;flex-wrap:wrap;gap:2px">${chip('',T('allMonths'))}${months.map(k=>chip(k,ML(k,true))).join('')}</div>`;
 }
 function setReportMonth(k){
  _rMonth=k||'';
@@ -375,7 +376,7 @@ function toast(msg){
  clearTimeout(toast._t); toast._t=setTimeout(()=>{$('#toast').innerHTML=''},2200);
 }
 function undoToast(msg,restoreFn){
- $('#toast').innerHTML=`<div class="t">${ic.check(16)} ${esc(msg)} <button style="pointer-events:auto;font-weight:800;text-decoration:underline;padding:0 2px" id="undoBtn">تراجع</button></div>`;
+ $('#toast').innerHTML=`<div class="t">${ic.check(16)} ${esc(msg)} <button style="pointer-events:auto;font-weight:800;text-decoration:underline;padding:0 2px" id="undoBtn">${T('undo')}</button></div>`;
  clearTimeout(toast._t); toast._t=setTimeout(()=>{$('#toast').innerHTML=''},6000);
  $('#undoBtn').onclick=()=>{clearTimeout(toast._t);$('#toast').innerHTML='';restoreFn();};
 }
@@ -392,31 +393,31 @@ function printSheet(title,html){
 }
 /* letterhead shared by every printed document: brand mark + document type on the lead side, title + date on the trailing side */
 function printDocHead(title,docType){
- return `<div class="doc-head"><div class="doc-brand"><span class="doc-mark">${ic.crane(18)}</span><div><b>يوميات العمال</b><span>${esc(docType)}</span></div></div><div class="doc-meta"><b>${esc(title)}</b><span class="num">${esc(today())}</span></div></div>`;
+ return `<div class="doc-head"><div class="doc-brand"><span class="doc-mark">${ic.crane(18)}</span><div><b>${T('appTitle')}</b><span>${esc(docType)}</span></div></div><div class="doc-meta"><b>${esc(title)}</b><span class="num">${esc(today())}</span></div></div>`;
 }
 /* physical sign-off line — worker pay slips are handed over on paper and signed on site */
 function sigBlock(){
- return `<div class="sigblock"><div class="sigline">توقيع العامل</div><div class="sigline">توقيع الإدارة</div></div>`;
+ return `<div class="sigblock"><div class="sigline">${T('signWorker')}</div><div class="sigline">${T('signManagement')}</div></div>`;
 }
 /* preview before commit to paper: same overlay pattern as modal()/viewSheet(), styled as a document viewer (gray canvas + white page) rather than a generic app modal */
 function printPreview(title,html){
  closePrintPreview();
  const wrap=document.createElement('div');wrap.id='printpreview';wrap.className='overlay';
- wrap.innerHTML=`<div class="sheet"><div class="head"><span>معاينة الطباعة</span><button class="x" aria-label="إغلاق" title="إغلاق" onclick="closePrintPreview()">${ic.x(17)}</button></div><div class="pp-paper">${html}</div><div class="actions" style="margin-top:14px"><button class="btn primary" id="ppPrintBtn">${ic.print(16)} طباعة</button><button class="btn secondary" onclick="closePrintPreview()">إغلاق</button></div></div>`;
+ wrap.innerHTML=`<div class="sheet"><div class="head"><span>${T('printPreview')}</span><button class="x" aria-label="${T('close')}" title="${T('close')}" onclick="closePrintPreview()">${ic.x(17)}</button></div><div class="pp-paper">${html}</div><div class="actions" style="margin-top:14px"><button class="btn primary" id="ppPrintBtn">${ic.print(16)} ${T('print')}</button><button class="btn secondary" onclick="closePrintPreview()">${T('close')}</button></div></div>`;
  wrap.addEventListener('mousedown',e=>{if(e.target===wrap)closePrintPreview()});
  document.body.appendChild(wrap);
  $('#ppPrintBtn').onclick=()=>{closePrintPreview();printSheet(title,html);};
 }
 function closePrintPreview(){$('#printpreview')?.remove()}
 function buildNav(){
- $('#nav').innerHTML=PAGES.filter(p=>p.ok()).map(p=>`<button data-page="${p.id}">${p.icon(21)}${LABELS[p.id]}</button>`).join('');
+ $('#nav').innerHTML=PAGES.filter(p=>p.ok()).map(p=>`<button data-page="${p.id}">${p.icon(21)}${T(LABELS[p.id])}</button>`).join('');
  document.querySelectorAll('#nav button').forEach(b=>b.onclick=()=>{page=b.dataset.page;render()});
 }
 function render(){
  const pg=PAGES.find(p=>p.id===page);
  if(!pg||!pg.ok()){page='home';return render()}
- $('#title').textContent=pg.title;
- $('#subtitle').textContent=CU?`المستخدم: ${CU.name}`:'إدارة العمال والمشاريع والحسابات';
+ $('#title').textContent=T(pg.titleKey);
+ $('#subtitle').textContent=CU?`${T('userLabel')}: ${CU.name}`:T('appSubtitle');
  document.querySelectorAll('#nav button').forEach(b=>b.classList.toggle('active',b.dataset.page===page));
  ({home,workers,projects,reports,accounts,expenses,settings})[page]();
  const w=$('#pagewrap'); w.style.animation='none'; void w.offsetWidth; w.style.animation='';
@@ -426,36 +427,36 @@ function render(){
 function home(){
  const s=stats();
  const acts=[
-  can('logs')?`<button class="btn primary" onclick="newLog()">${ic.plus(17)} تسجيل يومية</button>`:'',
-  can('manage')?`<button class="btn secondary" onclick="newWorker()">${ic.users(17)} إضافة عامل</button>`:'',
-  can('manage')?`<button class="btn secondary" onclick="newProject()">${ic.crane(17)} إضافة مشروع</button>`:'',
-  can('logs')?`<button class="btn success" onclick="newPayment()">${ic.pay(17)} تسجيل دفعة</button>`:''
+  can('logs')?`<button class="btn primary" onclick="newLog()">${ic.plus(17)} ${T('logToday')}</button>`:'',
+  can('manage')?`<button class="btn secondary" onclick="newWorker()">${ic.users(17)} ${T('addWorker')}</button>`:'',
+  can('manage')?`<button class="btn secondary" onclick="newProject()">${ic.crane(17)} ${T('addProject')}</button>`:'',
+  can('logs')?`<button class="btn success" onclick="newPayment()">${ic.pay(17)} ${T('logPayment')}</button>`:''
  ].filter(Boolean).join('');
  $('#main').innerHTML=`
  <div class="grid">
-  <div class="card stat"><span class="ic tint-blue">${ic.users(20)}</span><b class="num">${s.workers}</b><span class="lbl">عدد العمال</span></div>
-  <div class="card stat"><span class="ic tint-green">${ic.cal(20)}</span><b class="num">${db.logs.filter(x=>x.date===today()).length}</b><span class="lbl">يوميات اليوم</span></div>
-  <div class="card stat"><span class="ic tint-orange">${ic.crane(20)}</span><b class="num">${s.projects}</b><span class="lbl">المشاريع</span></div>
-  ${can('money')?`<div class="card stat"><span class="ic tint-purple">${ic.wallet(20)}</span><b>${money(s.balance)}</b><span class="lbl">الرصيد المستحق</span></div>`:''}
+  <div class="card stat"><span class="ic tint-blue">${ic.users(20)}</span><b class="num">${s.workers}</b><span class="lbl">${T('statWorkers')}</span></div>
+  <div class="card stat"><span class="ic tint-green">${ic.cal(20)}</span><b class="num">${db.logs.filter(x=>x.date===today()).length}</b><span class="lbl">${T('statToday')}</span></div>
+  <div class="card stat"><span class="ic tint-orange">${ic.crane(20)}</span><b class="num">${s.projects}</b><span class="lbl">${T('statProjects')}</span></div>
+  ${can('money')?`<div class="card stat"><span class="ic tint-purple">${ic.wallet(20)}</span><b>${money(s.balance)}</b><span class="lbl">${T('statBalance')}</span></div>`:''}
  </div>
- ${acts?`<div class="card"><h3>إجراءات سريعة</h3><div class="actions">${acts}</div></div>`:''}
- <div class="card"><h3>آخر اليوميات</h3>${recentLogs()}</div>`;
+ ${acts?`<div class="card"><h3>${T('quickActions')}</h3><div class="actions">${acts}</div></div>`:''}
+ <div class="card"><h3>${T('recentLogs')}</h3>${recentLogs()}</div>`;
 }
 function logRow(l,withActions){
- return `<div class="item"><div class="lead"><div class="tx"><h3>${esc(workerName(l.workerId))}</h3><small>${esc(projectName(l.projectId))} • <span class="num">${esc(l.date)}</span> • <span class="num">${esc(l.hours||0)}</span> ساعة${l.type?' • '+esc(l.type):''}</small></div></div>
+ return `<div class="item"><div class="lead"><div class="tx"><h3>${esc(workerName(l.workerId))}</h3><small>${esc(projectName(l.projectId))} • <span class="num">${esc(l.date)}</span> • <span class="num">${esc(l.hours||0)}</span> ${T('hourUnit')}${l.type?' • '+esc(l.type):''}</small></div></div>
  <div class="rowicons"><span class="amount">${money(l.wage)}</span>${withActions&&can('editDelete')?`
-  <button class="iconbtn" title="تعديل" onclick="editLog('${l.id}')">${ic.edit(16)}</button>
-  <button class="iconbtn del" title="حذف" onclick="delLog('${l.id}')">${ic.trash(16)}</button>`:''}
+  <button class="iconbtn" title="${T('edit')}" onclick="editLog('${l.id}')">${ic.edit(16)}</button>
+  <button class="iconbtn del" title="${T('delete')}" onclick="delLog('${l.id}')">${ic.trash(16)}</button>`:''}
  </div></div>`;
 }
 function recentLogs(){
  const arr=[...db.logs].sort((a,b)=>b.date.localeCompare(a.date)).slice(0,8);
- if(!arr.length)return emptyState(ic.cal,'لا توجد يوميات بعد','سجّل أول يومية عمل لتظهر هنا',`<button class="btn primary" onclick="newLog()">${ic.plus(16)} تسجيل يومية</button>`);
+ if(!arr.length)return emptyState(ic.cal,T('noLogsYetTitle'),T('noLogsYetHint'),`<button class="btn primary" onclick="newLog()">${ic.plus(16)} ${T('logToday')}</button>`);
  return arr.map(l=>logRow(l,true)).join('');
 }
 function workers(){
- $('#main').innerHTML=`<div class="toolbar"><div class="search">${ic.search(17)}<input id="ws" placeholder="بحث بالاسم أو رقم الهاتف..." oninput="filterWorkers()"></div>
-  <select onchange="_wsort=this.value;filterWorkers()"><option value="def" ${_wsort==='def'?'selected':''}>الترتيب الافتراضي</option><option value="name" ${_wsort==='name'?'selected':''}>الاسم</option>${can('money')?`<option value="balance" ${_wsort==='balance'?'selected':''}>الرصيد الأعلى</option>`:''}</select>
+ $('#main').innerHTML=`<div class="toolbar"><div class="search">${ic.search(17)}<input id="ws" placeholder="${T('searchWorkers')}" oninput="filterWorkers()"></div>
+  <select onchange="_wsort=this.value;filterWorkers()"><option value="def" ${_wsort==='def'?'selected':''}>${T('sortDefault')}</option><option value="name" ${_wsort==='name'?'selected':''}>${T('sortName')}</option>${can('money')?`<option value="balance" ${_wsort==='balance'?'selected':''}>${T('sortHighBalance')}</option>`:''}</select>
   ${can('manage')?`<button class="btn primary" onclick="newWorker()">${ic.plus(17)}</button>`:''}</div><div id="workerList"></div>`;
  filterWorkers();
 }
@@ -466,23 +467,23 @@ function filterWorkers(){
  if(_wsort==='name')list.sort((a,b)=>a.w.name.localeCompare(b.w.name,'ar'));
  else if(_wsort==='balance')list.sort((a,b)=>(b.earned-b.paid)-(a.earned-a.paid));
  $('#workerList').innerHTML=list.length?list.map(({w,earned,paid})=>{
-  return `<div class="card" style="cursor:pointer" onclick="workerDetail('${w.id}')"><div class="item"><div class="lead"><span class="avatar">${esc(w.name.trim().charAt(0))}</span><div class="tx"><h3>${esc(w.name)}</h3><small>${esc(w.job||'عامل')}${w.phone?' • <span class="num">'+esc(w.phone)+'</span>':''}${can('private')&&w.idNumber?' • هوية <span class="num">'+esc(w.idNumber)+'</span>':''}</small></div></div>
+  return `<div class="card" style="cursor:pointer" onclick="workerDetail('${w.id}')"><div class="item"><div class="lead"><span class="avatar">${esc(w.name.trim().charAt(0))}</span><div class="tx"><h3>${esc(w.name)}</h3><small>${esc(w.job||T('worker'))}${w.phone?' • <span class="num">'+esc(w.phone)+'</span>':''}${can('private')&&w.idNumber?' • '+T('idLabelShort')+' <span class="num">'+esc(w.idNumber)+'</span>':''}</small></div></div>
    <div class="rowicons">${can('manage')?`
-    <button class="iconbtn" title="تعديل" onclick="event.stopPropagation();editWorker('${w.id}')">${ic.edit(16)}</button>
-    <button class="iconbtn del" title="حذف" onclick="event.stopPropagation();delWorker('${w.id}')">${ic.trash(16)}</button>`:''}
+    <button class="iconbtn" title="${T('edit')}" onclick="event.stopPropagation();editWorker('${w.id}')">${ic.edit(16)}</button>
+    <button class="iconbtn del" title="${T('delete')}" onclick="event.stopPropagation();delWorker('${w.id}')">${ic.trash(16)}</button>`:''}
    </div></div>
-   ${can('money')?`<div class="row"><div><span class="muted">المستحق</span><br><b style="color:var(--green)">${money(earned)}</b></div><div><span class="muted">السلف/الدفعات</span><br><b style="color:var(--orange)">${money(paid)}</b></div></div><hr>`:''}
-   <div class="item" style="padding:0;border:0">${can('money')?`<b>الرصيد: ${money(earned-paid)}</b>`:'<span></span>'}${can('logs')?`<button class="btn secondary" onclick="event.stopPropagation();newLog('${w.id}')">${ic.plus(15)} يومية</button>`:''}</div></div>`
+   ${can('money')?`<div class="row"><div><span class="muted">${T('due')}</span><br><b style="color:var(--green)">${money(earned)}</b></div><div><span class="muted">${T('advancesPaid')}</span><br><b style="color:var(--orange)">${money(paid)}</b></div></div><hr>`:''}
+   <div class="item" style="padding:0;border:0">${can('money')?`<b>${T('balance')}: ${money(earned-paid)}</b>`:'<span></span>'}${can('logs')?`<button class="btn secondary" onclick="event.stopPropagation();newLog('${w.id}')">${ic.plus(15)} ${T('addLog')}</button>`:''}</div></div>`
  }).join(''):(db.workers.length
-   ?`<div class="card">${emptyState(ic.search,'لا نتائج مطابقة','جرّب اسمًا أو رقمًا آخر')}</div>`
-   :`<div class="card">${emptyState(ic.users,'لا يوجد عمال بعد','أضف أول عامل لبدء تسجيل اليوميات',`<button class="btn primary" onclick="newWorker()">${ic.plus(16)} إضافة عامل</button>`)}</div>`);
+   ?`<div class="card">${emptyState(ic.search,T('noResultsTitle'),T('noResultsHintName'))}</div>`
+   :`<div class="card">${emptyState(ic.users,T('noWorkersTitle'),T('noWorkersHint'),`<button class="btn primary" onclick="newWorker()">${ic.plus(16)} ${T('addWorker')}</button>`)}</div>`);
 }
 function projects(){
  const doneCount=db.projects.filter(p=>p.done).length;
- $('#main').innerHTML=`<div class="toolbar"><div class="search">${ic.search(17)}<input id="ps" placeholder="بحث باسم المشروع أو الموقع..." oninput="filterProjects()"></div>
-  <select onchange="_psort=this.value;filterProjects()"><option value="def" ${_psort==='def'?'selected':''}>الترتيب الافتراضي</option><option value="name" ${_psort==='name'?'selected':''}>الاسم</option>${can('money')?`<option value="total" ${_psort==='total'?'selected':''}>الأجور الأعلى</option>`:''}</select>
-  ${can('manage')?`<button class="btn primary" onclick="newProject()">${ic.plus(16)} مشروع</button>`:''}</div>
-  ${doneCount?`<button class="btn secondary wide" style="margin-bottom:12px" onclick="_showDone=!_showDone;filterProjects()">${_showDone?'إخفاء المشاريع المنتهية':`عرض المشاريع المنتهية (${doneCount})`}</button>`:''}
+ $('#main').innerHTML=`<div class="toolbar"><div class="search">${ic.search(17)}<input id="ps" placeholder="${T('searchProjects')}" oninput="filterProjects()"></div>
+  <select onchange="_psort=this.value;filterProjects()"><option value="def" ${_psort==='def'?'selected':''}>${T('sortDefault')}</option><option value="name" ${_psort==='name'?'selected':''}>${T('sortName')}</option>${can('money')?`<option value="total" ${_psort==='total'?'selected':''}>${T('sortHighWage')}</option>`:''}</select>
+  ${can('manage')?`<button class="btn primary" onclick="newProject()">${ic.plus(16)} ${T('project')}</button>`:''}</div>
+  ${doneCount?`<button class="btn secondary wide" style="margin-bottom:12px" onclick="_showDone=!_showDone;filterProjects()">${_showDone?T('hideFinished'):`${T('showFinished')} (${doneCount})`}</button>`:''}
   <div id="projectList"></div>`;
  filterProjects();
 }
@@ -499,23 +500,23 @@ function filterProjects(){
  $('#projectList').innerHTML=list.length?list.map(({p,logs,total,pays,received})=>{
   const byW={}; logs.forEach(l=>{byW[l.workerId]=(byW[l.workerId]||0)+1});
   const chips=Object.entries(byW).map(([wid,n])=>`<span class="chip" style="cursor:pointer" onclick="workerDetail('${wid}','${p.id}')">${esc(workerName(wid))} · <span class="num">${n}</span></span>`).join('');
-  const payRows=can('projPay')?pays.slice(-3).reverse().map(x=>`<div class="item"><div class="tx"><small><span class="num">${esc(x.date)}</span> • ${esc(x.note||'دفعة')}</small></div>
+  const payRows=can('projPay')?pays.slice(-3).reverse().map(x=>`<div class="item"><div class="tx"><small><span class="num">${esc(x.date)}</span> • ${esc(x.note||T('payment'))}</small></div>
    <div class="rowicons"><b style="color:var(--green)">${money(x.amount)}</b>${can('editDelete')?`
-    <button class="iconbtn" title="تعديل" onclick="editProjectPayment('${x.id}')">${ic.edit(16)}</button>
-    <button class="iconbtn del" title="حذف" onclick="delProjectPayment('${x.id}')">${ic.trash(16)}</button>`:''}
+    <button class="iconbtn" title="${T('edit')}" onclick="editProjectPayment('${x.id}')">${ic.edit(16)}</button>
+    <button class="iconbtn del" title="${T('delete')}" onclick="delProjectPayment('${x.id}')">${ic.trash(16)}</button>`:''}
    </div></div>`).join(''):'';
-  return `<div class="card" style="${p.done?'opacity:.65':''}"><div class="item" style="padding-top:0"><div class="lead"><span class="avatar tint-orange">${ic.crane(19)}</span><div class="tx"><h3>${esc(p.name)} ${p.done?'<span class="chip" style="background:var(--bg);color:var(--ink-3)">منتهي</span>':''}</h3><small>${esc(p.location||'')}${p.start?' • <span class="num">'+esc(p.start)+'</span>':''}</small></div></div>
+  return `<div class="card" style="${p.done?'opacity:.65':''}"><div class="item" style="padding-top:0"><div class="lead"><span class="avatar tint-orange">${ic.crane(19)}</span><div class="tx"><h3>${esc(p.name)} ${p.done?`<span class="chip" style="background:var(--bg);color:var(--ink-3)">${T('finished')}</span>`:''}</h3><small>${esc(p.location||'')}${p.start?' • <span class="num">'+esc(p.start)+'</span>':''}</small></div></div>
    <div class="rowicons">${can('manage')?`
-    <button class="iconbtn" title="${p.done?'إعادة تنشيط':'إنهاء المشروع'}" onclick="toggleProjectDone('${p.id}')">${p.done?ic.up(16):ic.check(16)}</button>
-    <button class="iconbtn" title="تعديل" onclick="editProject('${p.id}')">${ic.edit(16)}</button>
-    <button class="iconbtn del" title="حذف" onclick="delProject('${p.id}')">${ic.trash(16)}</button>`:''}
+    <button class="iconbtn" title="${p.done?T('reactivate'):T('finishProject')}" onclick="toggleProjectDone('${p.id}')">${p.done?ic.up(16):ic.check(16)}</button>
+    <button class="iconbtn" title="${T('edit')}" onclick="editProject('${p.id}')">${ic.edit(16)}</button>
+    <button class="iconbtn del" title="${T('delete')}" onclick="delProject('${p.id}')">${ic.trash(16)}</button>`:''}
    </div></div>
-   <div class="row3"><div><span class="muted">اليوميات</span><br><b class="num">${logs.length}</b></div>${can('money')?`<div><span class="muted">أجور مسجلة</span><br><b>${money(total)}</b></div>`:'<div></div>'}${can('projPay')?`<div><span class="muted">دفعات مقبوضة</span><br><b style="color:var(--green)">${money(received)}</b></div>`:'<div></div>'}</div>
-   ${chips?`<hr><span class="muted">العمال في المشروع</span><div style="margin-top:5px">${chips}</div>`:''}
-   ${can('projPay')?`<hr>${payRows||''}<div class="actions" style="margin-top:${payRows?'10px':'0'}"><button class="btn success" onclick="newProjectPayment('${p.id}')">${ic.plus(15)} دفعة مقبوضة</button><button class="btn secondary" onclick="printProjectPicker('${p.id}')">${ic.print(15)} طباعة كشف المتعهد</button></div>`:''}</div>`;
+   <div class="row3"><div><span class="muted">${T('logsCount')}</span><br><b class="num">${logs.length}</b></div>${can('money')?`<div><span class="muted">${T('wagesLogged')}</span><br><b>${money(total)}</b></div>`:'<div></div>'}${can('projPay')?`<div><span class="muted">${T('paymentsReceived')}</span><br><b style="color:var(--green)">${money(received)}</b></div>`:'<div></div>'}</div>
+   ${chips?`<hr><span class="muted">${T('workersInProject')}</span><div style="margin-top:5px">${chips}</div>`:''}
+   ${can('projPay')?`<hr>${payRows||''}<div class="actions" style="margin-top:${payRows?'10px':'0'}"><button class="btn success" onclick="newProjectPayment('${p.id}')">${ic.plus(15)} ${T('receivedPayment')}</button><button class="btn secondary" onclick="printProjectPicker('${p.id}')">${ic.print(15)} ${T('printContractorSheet')}</button></div>`:''}</div>`;
  }).join(''):(db.projects.length
-   ?`<div class="card">${emptyState(ic.search,'لا نتائج مطابقة','جرّب اسمًا أو موقعًا آخر')}</div>`
-   :`<div class="card">${emptyState(ic.crane,'لا توجد مشاريع بعد','أضف مشروعًا لربط اليوميات به',`<button class="btn primary" onclick="newProject()">${ic.plus(16)} إضافة مشروع</button>`)}</div>`);
+   ?`<div class="card">${emptyState(ic.search,T('noResultsTitle'),T('noResultsHintPlace'))}</div>`
+   :`<div class="card">${emptyState(ic.crane,T('noProjectsTitle'),T('noProjectsHint'),`<button class="btn primary" onclick="newProject()">${ic.plus(16)} ${T('addProject')}</button>`)}</div>`);
 }
 function filteredLogs(){
  return db.logs.filter(l=>(!_rWorker||l.workerId===_rWorker)&&(!_rProject||l.projectId===_rProject)&&(!_rFrom||l.date>=_rFrom)&&(!_rTo||l.date<=_rTo));
@@ -523,22 +524,22 @@ function filteredLogs(){
 function reportRowHtml(l){
  return `<tr><td>${esc(l.date)}</td><td>${esc(workerName(l.workerId))}</td><td>${esc(projectName(l.projectId))}</td><td>${esc(l.hours||0)}</td><td>${esc(l.type||'')}</td><td>${money(l.wage)}</td><td>${money(l.profit||0)}</td><td>${money(Number(l.wage||0)+Number(l.profit||0))}</td></tr>`;
 }
-const NO_ROWS=`<tr><td colspan="8">لا توجد نتائج مطابقة</td></tr>`;
+const NO_ROWS=()=>`<tr><td colspan="8">${T('noMatch')}</td></tr>`;
 /* one month = one band: navy header row, that month's days, then its subtotal row. Skipped when a
    single month is already selected, because then the whole table is that one month. */
 function reportBodyRows(logs,desc=true){
- if(!logs.length)return NO_ROWS;
+ if(!logs.length)return NO_ROWS();
  if(_rMonth)return logs.map(reportRowHtml).join('');
  return groupByMonth(logs,desc).map(([k,ls])=>{
   const w=ls.reduce((a,l)=>a+Number(l.wage||0),0),p=ls.reduce((a,l)=>a+Number(l.profit||0),0);
-  return `<tr class="mhead"><td colspan="8">${monthLabel(k)}</td></tr>`
+  return `<tr class="mhead"><td colspan="8">${ML(k)}</td></tr>`
    +ls.map(reportRowHtml).join('')
-   +`<tr class="msub"><td colspan="5">إجمالي ${monthLabel(k,true)} — <span class="num">${ls.length}</span> يوم</td><td>${money(w)}</td><td>${money(p)}</td><td>${money(w+p)}</td></tr>`;
+   +`<tr class="msub"><td colspan="5">${T('monthlyTotal')} ${ML(k,true)} — <span class="num">${ls.length}</span> ${T('logShort')}</td><td>${money(w)}</td><td>${money(p)}</td><td>${money(w+p)}</td></tr>`;
  }).join('');
 }
 function reports(){
- const workerOpts=`<option value="">كل العمال</option>`+db.workers.map(w=>`<option value="${w.id}" ${w.id===_rWorker?'selected':''}>${esc(w.name)}</option>`).join('');
- const projectOpts=`<option value="">كل المشاريع</option>`+db.projects.map(p=>`<option value="${p.id}" ${p.id===_rProject?'selected':''}>${esc(p.name)}</option>`).join('');
+ const workerOpts=`<option value="">${T('allWorkers')}</option>`+db.workers.map(w=>`<option value="${w.id}" ${w.id===_rWorker?'selected':''}>${esc(w.name)}</option>`).join('');
+ const projectOpts=`<option value="">${T('allProjects')}</option>`+db.projects.map(p=>`<option value="${p.id}" ${p.id===_rProject?'selected':''}>${esc(p.name)}</option>`).join('');
  const logs=[...filteredLogs()].sort((a,b)=>b.date.localeCompare(a.date));
  const fEarned=logs.reduce((a,l)=>a+Number(l.wage||0),0);
  const fProfit=logs.reduce((a,l)=>a+Number(l.profit||0),0);
@@ -551,59 +552,59 @@ function reports(){
  /* the month scope is chosen against the logs that pass the worker/project filter, so the chips only
     ever offer months that would actually return rows */
  const scopeLogs=db.logs.filter(l=>(!_rWorker||l.workerId===_rWorker)&&(!_rProject||l.projectId===_rProject));
- $('#main').innerHTML=`<div class="card"><h3>تصفية التقرير</h3>
- <div class="row">${F('rw','العامل',`<select id="rw" onchange="_rWorker=this.value;reports()">${workerOpts}</select>`)}${F('rp','المشروع',`<select id="rp" onchange="_rProject=this.value;reports()">${projectOpts}</select>`)}</div>
- <div class="field"><label for="rm">الشهر</label>${monthBar('rm',_rMonth,'setReportMonth')}${monthChips(scopeLogs,_rMonth,'setReportMonth')}<div class="msg"></div></div>
- <p class="muted" style="margin:0 0 8px">${_rMonth?`معروض شهر واحد فقط: <b>${monthLabel(_rMonth)}</b>`:'كل الشهور — السجلات مقسومة لشهور، ولكل شهر مجموعه.'}</p>
- <div class="row">${F('rf','من تاريخ',`<input id="rf" type="date" value="${_rFrom}" onchange="_rFrom=this.value;_rMonth='';reports()">`)}${F('rt','إلى تاريخ',`<input id="rt" type="date" value="${_rTo}" onchange="_rTo=this.value;_rMonth='';reports()">`)}</div>
- ${filterActive?`<button class="btn secondary wide" onclick="_rWorker='';_rProject='';_rMonth='';_rFrom='';_rTo='';reports()">${ic.x(15)} إزالة التصفية</button>`:''}</div>
- <div class="card"><h3>ملخص التقرير</h3><div class="grid">
- <div><span class="muted">الأيام</span><br><b class="num">${logs.length}</b></div><div><span class="muted">الساعات</span><br><b class="num">${fHours}</b></div>
- <div><span class="muted">أجور العمال</span><br><b style="color:var(--green)">${money(fEarned)}</b></div><div><span class="muted">ربحك</span><br><b style="color:var(--purple)">${money(fProfit)}</b></div>
- <div style="grid-column:1/-1"><span class="muted">المستحق من الشركة</span><br><b>${money(fEarned+fProfit)}</b></div></div>
+ $('#main').innerHTML=`<div class="card"><h3>${T('filterReport')}</h3>
+ <div class="row">${F('rw',T('worker'),`<select id="rw" onchange="_rWorker=this.value;reports()">${workerOpts}</select>`)}${F('rp',T('project'),`<select id="rp" onchange="_rProject=this.value;reports()">${projectOpts}</select>`)}</div>
+ <div class="field"><label for="rm">${T('month')}</label>${monthBar('rm',_rMonth,'setReportMonth')}${monthChips(scopeLogs,_rMonth,'setReportMonth')}<div class="msg"></div></div>
+ <p class="muted" style="margin:0 0 8px">${_rMonth?`${T('singleMonthOnly')}: <b>${ML(_rMonth)}</b>`:T('allMonthsBandedHint')}</p>
+ <div class="row">${F('rf',T('fromDate'),`<input id="rf" type="date" value="${_rFrom}" onchange="_rFrom=this.value;_rMonth='';reports()">`)}${F('rt',T('toDate'),`<input id="rt" type="date" value="${_rTo}" onchange="_rTo=this.value;_rMonth='';reports()">`)}</div>
+ ${filterActive?`<button class="btn secondary wide" onclick="_rWorker='';_rProject='';_rMonth='';_rFrom='';_rTo='';reports()">${ic.x(15)} ${T('clearFilter')}</button>`:''}</div>
+ <div class="card"><h3>${T('reportSummary')}</h3><div class="grid">
+ <div><span class="muted">${T('days')}</span><br><b class="num">${logs.length}</b></div><div><span class="muted">${T('hours')}</span><br><b class="num">${fHours}</b></div>
+ <div><span class="muted">${T('workerWages')}</span><br><b style="color:var(--green)">${money(fEarned)}</b></div><div><span class="muted">${T('yourProfit')}</span><br><b style="color:var(--purple)">${money(fProfit)}</b></div>
+ <div style="grid-column:1/-1"><span class="muted">${T('dueFromCompany')}</span><br><b>${money(fEarned+fProfit)}</b></div></div>
  ${_rMonth&&_rWorker?carryOverHtml(_rWorker,_rMonth):''}</div>
- <div class="card"><h3>السجلات التفصيلية</h3><div style="overflow-x:auto"><table class="ptable"><thead><tr><th>التاريخ</th><th>العامل</th><th>المشروع</th><th>الساعات</th><th>نوع العمل</th><th>أجر العامل</th><th>ربحك</th><th>المستحق من الشركة</th></tr></thead><tbody>${rows}</tbody></table></div></div>
- <div class="card"><h3>كشف العمال</h3>
- ${byWorker.length?`<select style="margin-bottom:10px" onchange="_rsort=this.value;reports()"><option value="def" ${_rsort==='def'?'selected':''}>الترتيب الافتراضي</option><option value="name" ${_rsort==='name'?'selected':''}>الاسم</option><option value="earned" ${_rsort==='earned'?'selected':''}>الأعلى استحقاقًا</option></select>`:''}
- ${byWorker.length?byWorker.map(x=>`<div class="item"><div class="lead"><span class="avatar">${esc(x.w.name.trim().charAt(0))}</span><div class="tx"><b>${esc(x.w.name)}</b><br><small><span class="num">${x.days}</span> يوم • <span class="num">${x.hours}</span> ساعة</small></div></div><div style="text-align:left"><b style="color:var(--green)">${money(x.earned)}</b><br><small>صافي ${money(x.earned-x.paid)}</small></div></div>`).join(''):emptyState(ic.chart,'لا توجد بيانات','سجّل يوميات ودفعات لعرض الكشف')}</div>
- <div class="actions"><button class="btn primary" onclick="printReportView()">${ic.print(17)} طباعة</button>${CU&&CU.isAdmin?`<button class="btn secondary" onclick="exportData()">${ic.down(17)} تصدير البيانات</button>`:''}</div>`;
+ <div class="card"><h3>${T('detailedRecords')}</h3><div style="overflow-x:auto"><table class="ptable"><thead><tr><th>${T('date')}</th><th>${T('worker')}</th><th>${T('project')}</th><th>${T('hours')}</th><th>${T('workType')}</th><th>${T('workerWage')}</th><th>${T('yourProfit')}</th><th>${T('dueFromCompany')}</th></tr></thead><tbody>${rows}</tbody></table></div></div>
+ <div class="card"><h3>${T('workerStatement')}</h3>
+ ${byWorker.length?`<select style="margin-bottom:10px" onchange="_rsort=this.value;reports()"><option value="def" ${_rsort==='def'?'selected':''}>${T('sortDefault')}</option><option value="name" ${_rsort==='name'?'selected':''}>${T('sortName')}</option><option value="earned" ${_rsort==='earned'?'selected':''}>${T('sortHighEarn')}</option></select>`:''}
+ ${byWorker.length?byWorker.map(x=>`<div class="item"><div class="lead"><span class="avatar">${esc(x.w.name.trim().charAt(0))}</span><div class="tx"><b>${esc(x.w.name)}</b><br><small><span class="num">${x.days}</span> ${T('logShort')} • <span class="num">${x.hours}</span> ${T('hourUnit')}</small></div></div><div style="text-align:left"><b style="color:var(--green)">${money(x.earned)}</b><br><small>${T('net')} ${money(x.earned-x.paid)}</small></div></div>`).join(''):emptyState(ic.chart,T('noDataYet'),T('noDataHint'))}</div>
+ <div class="actions"><button class="btn primary" onclick="printReportView()">${ic.print(17)} ${T('print')}</button>${CU&&CU.isAdmin?`<button class="btn secondary" onclick="exportData()">${ic.down(17)} ${T('exportData')}</button>`:''}</div>`;
 }
 /* worker balance for one month, carrying in everything owed from earlier months so the final
    number is his real running balance and not just this month in isolation */
 function carryOverHtml(workerId,k){
  const c=carryOver(db.logs.filter(l=>l.workerId===workerId),db.payments.filter(p=>p.workerId===workerId),k);
  const line=(label,val,color)=>`<div class="item"><span class="muted">${label}</span><b ${color?`style="color:${color}"`:''}>${money(val)}</b></div>`;
- return `<hr><span class="muted">حساب ${esc(workerName(workerId))} — ${monthLabel(k,true)}</span>
- ${line('رصيد سابق (قبل هذا الشهر)',c.prev)}
- ${line('مستحق الشهر',c.earned,'var(--green)')}
- ${line('مدفوع في الشهر',c.paid,'var(--orange)')}
- <div class="item"><b>الرصيد الحالي</b><b style="font-size:19px">${money(c.balance)}</b></div>`;
+ return `<hr><span class="muted">${T('workerStatement')} ${esc(workerName(workerId))} — ${ML(k,true)}</span>
+ ${line(T('prevBalance'),c.prev)}
+ ${line(T('monthDue'),c.earned,'var(--green)')}
+ ${line(T('monthPaid'),c.paid,'var(--orange)')}
+ <div class="item"><b>${T('currentBalance')}</b><b style="font-size:19px">${money(c.balance)}</b></div>`;
 }
 function printReportView(){
  const logs=[...filteredLogs()].sort((a,b)=>a.date.localeCompare(b.date));
  const rows=reportBodyRows(logs,false);
  const totalWage=logs.reduce((a,l)=>a+Number(l.wage||0),0),totalProfit=logs.reduce((a,l)=>a+Number(l.profit||0),0);
- const base=_rWorker?workerName(_rWorker):(_rProject?projectName(_rProject):'تقرير عام');
- const title=_rMonth?`${base} — ${monthLabel(_rMonth,true)}`:base;
- printPreview(title,printDocHead(title,_rMonth?`تقرير مالي داخلي — ${monthLabel(_rMonth)}`:'تقرير مالي داخلي')+`<table class="ptable"><thead><tr><th>التاريخ</th><th>العامل</th><th>المشروع</th><th>الساعات</th><th>نوع العمل</th><th>أجر العامل</th><th>ربحك</th><th>المستحق من الشركة</th></tr></thead><tbody>${rows}</tbody><tfoot><tr><td colspan="5">الإجمالي</td><td>${money(totalWage)}</td><td>${money(totalProfit)}</td><td>${money(totalWage+totalProfit)}</td></tr></tfoot></table>`);
+ const base=_rWorker?workerName(_rWorker):(_rProject?projectName(_rProject):T('generalReport'));
+ const title=_rMonth?`${base} — ${ML(_rMonth,true)}`:base;
+ printPreview(title,printDocHead(title,_rMonth?`${T('internalReport')} — ${ML(_rMonth)}`:T('internalReport'))+`<table class="ptable"><thead><tr><th>${T('date')}</th><th>${T('worker')}</th><th>${T('project')}</th><th>${T('hours')}</th><th>${T('workType')}</th><th>${T('workerWage')}</th><th>${T('yourProfit')}</th><th>${T('dueFromCompany')}</th></tr></thead><tbody>${rows}</tbody><tfoot><tr><td colspan="5">${T('grandTotal')}</td><td>${money(totalWage)}</td><td>${money(totalProfit)}</td><td>${money(totalWage+totalProfit)}</td></tr></tfoot></table>`);
 }
 function accounts(){
  const s=stats();
- $('#main').innerHTML=`<div class="grid"><div class="card stat"><span class="ic tint-green">${ic.chart(20)}</span><b style="color:var(--green)">${money(s.earned)}</b><span class="lbl">إجمالي المستحقات للعمال</span></div><div class="card stat"><span class="ic tint-orange">${ic.pay(20)}</span><b style="color:var(--orange)">${money(s.paid)}</b><span class="lbl">إجمالي المدفوع للعمال</span></div>
- <div class="card stat"><span class="ic tint-purple">${ic.wallet(20)}</span><b style="color:var(--purple)">${money(s.profit)}</b><span class="lbl">إجمالي ربحك</span></div><div class="card stat"><span class="ic tint-blue">${ic.crane(20)}</span><b>${money(s.billed)}</b><span class="lbl">المستحق من الشركة</span></div></div>
- <div class="card"><h3>الرصيد الإجمالي</h3><div class="total">${money(s.balance)}</div><p class="muted" style="margin:4px 0 12px">المستحقات المسجلة ناقص الدفعات والسلف.</p><button class="btn success wide" onclick="newPayment()">${ic.plus(16)} تسجيل دفعة / سلفة</button></div>
- <div class="card"><h3>آخر الدفعات</h3>${db.payments.slice(-10).reverse().map(p=>`<div class="item"><div class="lead"><div class="tx"><b>${esc(workerName(p.workerId))}</b><br><small><span class="num">${esc(p.date)}</span> • ${esc(p.note||'دفعة')}</small></div></div>
+ $('#main').innerHTML=`<div class="grid"><div class="card stat"><span class="ic tint-green">${ic.chart(20)}</span><b style="color:var(--green)">${money(s.earned)}</b><span class="lbl">${T('totalDueWorkers')}</span></div><div class="card stat"><span class="ic tint-orange">${ic.pay(20)}</span><b style="color:var(--orange)">${money(s.paid)}</b><span class="lbl">${T('totalPaidWorkers')}</span></div>
+ <div class="card stat"><span class="ic tint-purple">${ic.wallet(20)}</span><b style="color:var(--purple)">${money(s.profit)}</b><span class="lbl">${T('totalProfit')}</span></div><div class="card stat"><span class="ic tint-blue">${ic.crane(20)}</span><b>${money(s.billed)}</b><span class="lbl">${T('dueFromCompany')}</span></div></div>
+ <div class="card"><h3>${T('totalBalance')}</h3><div class="total">${money(s.balance)}</div><p class="muted" style="margin:4px 0 12px">${T('balanceHint')}</p><button class="btn success wide" onclick="newPayment()">${ic.plus(16)} ${T('logPaymentAdvance')}</button></div>
+ <div class="card"><h3>${T('recentPayments')}</h3>${db.payments.slice(-10).reverse().map(p=>`<div class="item"><div class="lead"><div class="tx"><b>${esc(workerName(p.workerId))}</b><br><small><span class="num">${esc(p.date)}</span> • ${esc(p.note||T('payment'))}</small></div></div>
   <div class="rowicons"><b style="color:var(--orange)">${money(p.amount)}</b>${can('editDelete')?`
-   <button class="iconbtn" title="تعديل" onclick="editPayment('${p.id}')">${ic.edit(16)}</button>
-   <button class="iconbtn del" title="حذف" onclick="delPayment('${p.id}')">${ic.trash(16)}</button>`:''}
-  </div></div>`).join('')||emptyState(ic.pay,'لا توجد دفعات','سجّل دفعة أو سلفة لتظهر هنا')}</div>
- ${CU&&CU.isAdmin?`<div class="card"><h3>النسخ الاحتياطي</h3><div class="actions"><button class="btn secondary" onclick="exportData()">${ic.down(16)} تصدير</button><button class="btn secondary" onclick="restoreData()">${ic.up(16)} استعادة</button></div></div>
- <div class="card"><button class="btn danger wide" onclick="resetData()">${ic.warn(17)} حذف كل البيانات</button></div>`:''}`;
+   <button class="iconbtn" title="${T('edit')}" onclick="editPayment('${p.id}')">${ic.edit(16)}</button>
+   <button class="iconbtn del" title="${T('delete')}" onclick="delPayment('${p.id}')">${ic.trash(16)}</button>`:''}
+  </div></div>`).join('')||emptyState(ic.pay,T('noPaymentsTitle'),T('noPaymentsHint'))}</div>
+ ${CU&&CU.isAdmin?`<div class="card"><h3>${T('backup')}</h3><div class="actions"><button class="btn secondary" onclick="exportData()">${ic.down(16)} ${T('exportShort')}</button><button class="btn secondary" onclick="restoreData()">${ic.up(16)} ${T('restore')}</button></div></div>
+ <div class="card"><button class="btn danger wide" onclick="resetData()">${ic.warn(17)} ${T('deleteAllData')}</button></div>`:''}`;
 }
 
 /* ---------- expenses (partner settlement) ---------- */
-const PARTNERS=[['me','مصاريفي'],['brother','مصاريف أخي']];
-const partnerLabel=k=>PARTNERS.find(x=>x[0]===k)?.[1]||k;
+const PARTNERS=()=>[['me',T('myExpenses')],['brother',T('brotherExpenses')]];
+const partnerLabel=k=>PARTNERS().find(x=>x[0]===k)?.[1]||k;
 function filteredExpenses(){
  return db.expenses.filter(x=>(!_eFrom||x.date>=_eFrom)&&(!_eTo||x.date<=_eTo));
 }
@@ -613,60 +614,60 @@ function expenses(){
  const brTotal=list.filter(x=>x.partner==='brother').reduce((a,x)=>a+Number(x.amount||0),0);
  const diff=meTotal-brTotal;
  let settleLine;
- if(!meTotal&&!brTotal)settleLine='لا توجد مصاريف في هذه الفترة بعد.';
- else if(diff===0)settleLine='المصاريف متعادلة، لا يوجد تحويل مطلوب.';
- else if(diff>0)settleLine=`على أخيك تحويل ${money(diff/2)} لك لتعادل المصاريف قبل توزيع الأرباح.`;
- else settleLine=`عليك تحويل ${money(Math.abs(diff)/2)} لأخيك لتعادل المصاريف قبل توزيع الأرباح.`;
- const expRow=x=>`<div class="item"><div class="lead"><span class="avatar">${x.partner==='me'?'أ':'خ'}</span><div class="tx"><b>${esc(x.note||'مصروف')}</b><br><small>${partnerLabel(x.partner)}${x.projectId?' • '+esc(projectName(x.projectId)):''} • <span class="num">${esc(x.date)}</span></small></div></div>
+ if(!meTotal&&!brTotal)settleLine=T('noExpensesPeriod');
+ else if(diff===0)settleLine=T('settledEven');
+ else if(diff>0)settleLine=T('settleBrotherOwesYou').replace('{amt}',money(diff/2));
+ else settleLine=T('settleYouOweBrother').replace('{amt}',money(Math.abs(diff)/2));
+ const expRow=x=>`<div class="item"><div class="lead"><span class="avatar">${esc((x.partner==='me'?T('myExpenses'):T('brotherExpenses')).trim().charAt(0))}</span><div class="tx"><b>${esc(x.note||T('newExpense'))}</b><br><small>${partnerLabel(x.partner)}${x.projectId?' • '+esc(projectName(x.projectId)):''} • <span class="num">${esc(x.date)}</span></small></div></div>
   <div class="rowicons"><b style="color:var(--orange)">${money(x.amount)}</b>${can('editDelete')?`
-   <button class="iconbtn" title="تعديل" onclick="editExpense('${x.id}')">${ic.edit(16)}</button>
-   <button class="iconbtn del" title="حذف" onclick="delExpense('${x.id}')">${ic.trash(16)}</button>`:''}
+   <button class="iconbtn" title="${T('edit')}" onclick="editExpense('${x.id}')">${ic.edit(16)}</button>
+   <button class="iconbtn del" title="${T('delete')}" onclick="delExpense('${x.id}')">${ic.trash(16)}</button>`:''}
   </div></div>`;
  const rows=!list.length
-  ?emptyState(ic.pay,'لا توجد مصاريف','سجّل أول مصروف لتظهر هنا',`<button class="btn primary" onclick="newExpense()">${ic.plus(16)} مصروف جديد</button>`)
+  ?emptyState(ic.pay,T('noExpensesTitle'),T('noExpensesHint'),`<button class="btn primary" onclick="newExpense()">${ic.plus(16)} ${T('newExpense')}</button>`)
   :_eMonth?list.map(expRow).join('')
-  :groupByMonth(list).map(([k,xs])=>`<details class="msec" open><summary><span>${monthLabel(k,true)}</span><span class="msum">${money(xs.reduce((a,x)=>a+Number(x.amount||0),0))}</span></summary><div class="mbody">${xs.map(expRow).join('')}</div></details>`).join('');
+  :groupByMonth(list).map(([k,xs])=>`<details class="msec" open><summary><span>${ML(k,true)}</span><span class="msum">${money(xs.reduce((a,x)=>a+Number(x.amount||0),0))}</span></summary><div class="mbody">${xs.map(expRow).join('')}</div></details>`).join('');
  const filterActive=_eFrom||_eTo;
- $('#main').innerHTML=`<div class="card"><h3>الفترة</h3>
- <div class="field"><label for="em">الشهر</label>${monthBar('em',_eMonth,'setExpenseMonth')}${monthChips(db.expenses,_eMonth,'setExpenseMonth')}<div class="msg"></div></div>
- <div class="row">${F('ef','من تاريخ',`<input id="ef" type="date" value="${_eFrom}" onchange="_eFrom=this.value;_eMonth='';expenses()">`)}${F('et','إلى تاريخ',`<input id="et" type="date" value="${_eTo}" onchange="_eTo=this.value;_eMonth='';expenses()">`)}</div>
- ${filterActive?`<button class="btn secondary wide" onclick="_eFrom='';_eTo='';_eMonth='';expenses()">${ic.x(15)} إزالة التصفية</button>`:''}</div>
- <div class="card"><h3>تسوية المصاريف</h3><div class="grid">
- <div><span class="muted">مصاريفي</span><br><b style="color:var(--blue)">${money(meTotal)}</b></div><div><span class="muted">مصاريف أخي</span><br><b style="color:var(--purple)">${money(brTotal)}</b></div></div>
+ $('#main').innerHTML=`<div class="card"><h3>${T('period')}</h3>
+ <div class="field"><label for="em">${T('month')}</label>${monthBar('em',_eMonth,'setExpenseMonth')}${monthChips(db.expenses,_eMonth,'setExpenseMonth')}<div class="msg"></div></div>
+ <div class="row">${F('ef',T('fromDate'),`<input id="ef" type="date" value="${_eFrom}" onchange="_eFrom=this.value;_eMonth='';expenses()">`)}${F('et',T('toDate'),`<input id="et" type="date" value="${_eTo}" onchange="_eTo=this.value;_eMonth='';expenses()">`)}</div>
+ ${filterActive?`<button class="btn secondary wide" onclick="_eFrom='';_eTo='';_eMonth='';expenses()">${ic.x(15)} ${T('clearFilter')}</button>`:''}</div>
+ <div class="card"><h3>${T('expenseSettlement')}</h3><div class="grid">
+ <div><span class="muted">${T('myExpenses')}</span><br><b style="color:var(--blue)">${money(meTotal)}</b></div><div><span class="muted">${T('brotherExpenses')}</span><br><b style="color:var(--purple)">${money(brTotal)}</b></div></div>
  <p class="muted" style="margin:10px 0 0">${settleLine}</p></div>
- <div class="card"><h3>المصاريف</h3>${rows}</div>
- <div class="actions"><button class="btn primary wide" onclick="newExpense()">${ic.plus(17)} مصروف جديد</button></div>`;
+ <div class="card"><h3>${T('expenses')}</h3>${rows}</div>
+ <div class="actions"><button class="btn primary wide" onclick="newExpense()">${ic.plus(17)} ${T('newExpense')}</button></div>`;
 }
 function expenseForm(x={}){
  const propts=db.projects.map(p=>`<option value="${p.id}" ${p.id===x.projectId?'selected':''}>${esc(p.name)}</option>`).join('');
- return F('ep','لمن هذا المصروف *',`<select id="ep">${PARTNERS.map(([k,l])=>`<option value="${k}" ${k===(x.partner||'me')?'selected':''}>${esc(l)}</option>`).join('')}</select>`)
- +`<div class="row">${F('ea','المبلغ *',`<input id="ea" type="text" inputmode="decimal" oninput="digits(this)" value="${x.amount??''}">`)}${F('ed','التاريخ',`<input id="ed" type="date" value="${esc(x.date||today())}">`)}</div>`
- +F('epi','المشروع (اختياري)',`<select id="epi"><option value="">عام - غير مرتبط بمشروع</option>${propts}</select>`)
- +F('en','ما هو المصروف *',`<input id="en" placeholder="بنزين، أسمنت، أدوات..." value="${esc(x.note||'')}">`);
+ return F('ep',T('expenseFor'),`<select id="ep">${PARTNERS().map(([k,l])=>`<option value="${k}" ${k===(x.partner||'me')?'selected':''}>${esc(l)}</option>`).join('')}</select>`)
+ +`<div class="row">${F('ea',T('amount'),`<input id="ea" type="text" inputmode="decimal" oninput="digits(this)" value="${x.amount??''}">`)}${F('ed',T('date'),`<input id="ed" type="date" value="${esc(x.date||today())}">`)}</div>`
+ +F('epi',T('projectOptional'),`<select id="epi"><option value="">${T('expenseGeneral')}</option>${propts}</select>`)
+ +F('en',T('expenseWhat'),`<input id="en" placeholder="${T('expenseWhatPlaceholder')}" value="${esc(x.note||'')}">`);
 }
 function readExpenseForm(){
- if(!Number($('#ea').value))return fieldErr('ea','اكتب المبلغ');
- if(!$('#en').value.trim())return fieldErr('en','اكتب وصف المصروف');
+ if(!Number($('#ea').value))return fieldErr('ea',T('errAmount'));
+ if(!$('#en').value.trim())return fieldErr('en',T('errExpenseNote'));
  return {partner:$('#ep').value,amount:Number($('#ea').value),date:$('#ed').value,projectId:$('#epi').value,note:$('#en').value.trim()};
 }
 function newExpense(){
- modal('تسجيل مصروف',expenseForm(),()=>{
+ modal(T('logExpenseTitle'),expenseForm(),()=>{
   const v=readExpenseForm();if(!v)return false;
   const x={id:crypto.randomUUID(),...v};
-  db.expenses.push(x);window.api.addExpense(x);render();toast('تم تسجيل المصروف');return true});
+  db.expenses.push(x);window.api.addExpense(x);render();toast(T('toastExpenseAdded'));return true});
 }
 function editExpense(id){
  const x=db.expenses.find(y=>y.id===id);
- modal('تعديل مصروف',expenseForm(x),()=>{
+ modal(T('editExpenseTitle'),expenseForm(x),()=>{
   const v=readExpenseForm();if(!v)return false;
-  Object.assign(x,v);window.api.updateExpense(x);render();toast('تم حفظ التعديل');return true});
+  Object.assign(x,v);window.api.updateExpense(x);render();toast(T('toastExpenseSaved'));return true});
 }
 function delExpense(id){
  const x=db.expenses.find(y=>y.id===id);
- confirmBox('حذف مصروف',`حذف مصروف <b>${esc(x.note||'')}</b> بمبلغ ${money(x.amount)}؟`,()=>{
+ confirmBox(T('confirmDeleteExpense'),T('confirmDeleteExpenseBody').replace('{name}',`<b>${esc(x.note||'')}</b>`).replace('{amt}',money(x.amount)),()=>{
   db.expenses=db.expenses.filter(y=>y.id!==id);
   window.api.deleteExpense(id);render();
-  undoToast('تم حذف المصروف',()=>{db.expenses.push(x);window.api.addExpense(x);render();toast('تم استرجاع المصروف');});
+  undoToast(T('toastExpenseDeleted'),()=>{db.expenses.push(x);window.api.addExpense(x);render();toast(T('toastExpenseRestored'));});
  });
 }
 
@@ -676,73 +677,92 @@ async function settings(){
  const bs=await window.api.getBackupSettings();
  const backups=await window.api.listBackups();
  $('#main').innerHTML=`
- <div class="card"><h3>المستخدمون</h3>
-  ${users.map(u=>`<div class="item userline"><div class="lead"><span class="avatar">${u.isAdmin?ic.lock(17):esc(u.name.trim().charAt(0))}</span><div class="tx"><b>${esc(u.name)}</b> ${u.isAdmin?'<span class="badge-admin">مدير</span>':''}<br><small>${u.isAdmin?'كل الصلاحيات':PERMS.filter(([k])=>u.perms[k]).map(([,l])=>l.split(' ')[0]).join('، ')||'بدون صلاحيات'}</small></div></div>
+ <div class="card"><h3>${T('users')}</h3>
+  ${users.map(u=>`<div class="item userline"><div class="lead"><span class="avatar">${u.isAdmin?ic.lock(17):esc(u.name.trim().charAt(0))}</span><div class="tx"><b>${esc(u.name)}</b> ${u.isAdmin?`<span class="badge-admin">${T('adminBadge')}</span>`:''}<br><small>${u.isAdmin?T('allPerms'):PERMS().filter(([k])=>u.perms[k]).map(([,l])=>l.split(' ')[0]).join(LANG==='he'?', ':'، ')||T('noPerms')}</small></div></div>
    <div class="rowicons">
-    <button class="iconbtn" title="تعديل" onclick="editUser('${u.id}')">${ic.edit(16)}</button>
-    ${u.id!==CU.id?`<button class="iconbtn del" title="حذف" onclick="delUser('${u.id}')">${ic.trash(16)}</button>`:''}
+    <button class="iconbtn" title="${T('edit')}" onclick="editUser('${u.id}')">${ic.edit(16)}</button>
+    ${u.id!==CU.id?`<button class="iconbtn del" title="${T('delete')}" onclick="delUser('${u.id}')">${ic.trash(16)}</button>`:''}
    </div></div>`).join('')}
-  <button class="btn primary wide" style="margin-top:10px" onclick="newUser()">${ic.plus(16)} إضافة مستخدم</button></div>
- <div class="card"><h3>النسخ الاحتياطي التلقائي</h3>
-  ${F('bmode','متى يتم النسخ',`<select id="bmode"><option value="quit" ${bs.mode==='quit'?'selected':''}>عند كل إغلاق للبرنامج</option><option value="daily" ${bs.mode==='daily'?'selected':''}>مرة يومياً</option><option value="weekly" ${bs.mode==='weekly'?'selected':''}>مرة أسبوعياً</option></select>`)}
-  ${F('bkeep','عدد النسخ المحفوظة',`<input id="bkeep" type="text" inputmode="numeric" oninput="digits(this)" value="${bs.keep}">`)}
-  <div class="field"><label>مجلد النسخ</label><div class="item" style="padding:6px 0;border:0"><small class="num" dir="ltr" style="overflow:hidden;text-overflow:ellipsis">${esc(_pickedDir||bs.dir)}</small><button class="btn secondary" onclick="pickBackupDir()">تغيير</button></div>${_pickedDir?'<p class="muted" style="margin:2px 0 0">مجلد جديد — اضغط "حفظ الإعدادات" لتثبيته</p>':''}</div>
-  <div class="actions"><button class="btn primary" onclick="saveBackupSettings()">${ic.check(16)} حفظ الإعدادات</button><button class="btn success" onclick="backupNow()">${ic.down(16)} نسخ احتياطي الآن</button></div>
-  <p class="muted" style="margin:10px 0 0">آخر نسخة: ${bs.last?`<span class="num">${esc(bs.last.slice(0,16).replace('T',' '))}</span>`:'لا يوجد بعد'}</p></div>
- <div class="card"><h3>آخر النسخ</h3>${backups.length?backups.map(b=>`<div class="item"><small class="num" dir="ltr">${esc(b.file)}</small><button class="btn secondary" onclick="restoreFromFile('${esc(b.path).replace(/\\/g,'\\\\')}')">استعادة</button></div>`).join(''):'<div class="empty">لا توجد نسخ بعد</div>'}</div>
- <div class="card"><button class="btn danger wide" onclick="logout()">تسجيل الخروج</button></div>`;
+  <button class="btn primary wide" style="margin-top:10px" onclick="newUser()">${ic.plus(16)} ${T('addUser')}</button></div>
+ <div class="card"><h3>${T('appLanguage')}</h3>
+  <div class="userpick" style="justify-content:flex-start">
+   <button type="button" class="${LANG==='ar'?'sel':''}" onclick="changeLang('ar')">${T('langArabic')}</button>
+   <button type="button" class="${LANG==='he'?'sel':''}" onclick="changeLang('he')">${T('langHebrew')}</button>
+  </div>
+  <p class="muted" style="margin:8px 0 0">${T('langHint')}</p></div>
+ <div class="card"><h3>${T('autoBackup')}</h3>
+  ${F('bmode',T('backupWhen'),`<select id="bmode"><option value="quit" ${bs.mode==='quit'?'selected':''}>${T('onEveryClose')}</option><option value="daily" ${bs.mode==='daily'?'selected':''}>${T('daily')}</option><option value="weekly" ${bs.mode==='weekly'?'selected':''}>${T('weekly')}</option></select>`)}
+  ${F('bkeep',T('keptBackups'),`<input id="bkeep" type="text" inputmode="numeric" oninput="digits(this)" value="${bs.keep}">`)}
+  <div class="field"><label>${T('backupFolder')}</label><div class="item" style="padding:6px 0;border:0"><small class="num" dir="ltr" style="overflow:hidden;text-overflow:ellipsis">${esc(_pickedDir||bs.dir)}</small><button class="btn secondary" onclick="pickBackupDir()">${T('change')}</button></div>${_pickedDir?`<p class="muted" style="margin:2px 0 0">${T('newFolderHint')}</p>`:''}</div>
+  <div class="actions"><button class="btn primary" onclick="saveBackupSettings()">${ic.check(16)} ${T('saveSettings')}</button><button class="btn success" onclick="backupNow()">${ic.down(16)} ${T('backupNow')}</button></div>
+  <p class="muted" style="margin:10px 0 0">${T('lastBackup')}: ${bs.last?`<span class="num">${esc(bs.last.slice(0,16).replace('T',' '))}</span>`:T('none')}</p></div>
+ <div class="card"><h3>${T('recentBackups')}</h3>${backups.length?backups.map(b=>`<div class="item"><small class="num" dir="ltr">${esc(b.file)}</small><button class="btn secondary" onclick="restoreFromFile('${esc(b.path).replace(/\\/g,'\\\\')}')">${T('restore')}</button></div>`).join(''):`<div class="empty">${T('noBackupsYet')}</div>`}</div>
+ <div class="card"><button class="btn danger wide" onclick="logout()">${T('logout')}</button></div>`;
 }
 let _pickedDir=null;
 async function pickBackupDir(){const d=await window.api.pickBackupDir();if(d){_pickedDir=d;render()}}
 async function saveBackupSettings(){
  await window.api.setBackupSettings({mode:$('#bmode').value,keep:Number($('#bkeep').value)||30,dir:_pickedDir||undefined});
- _pickedDir=null;render();toast('تم حفظ إعدادات النسخ');
+ _pickedDir=null;render();toast(T('toastBackupSettingsSaved'));
 }
-async function backupNow(){const ok=await window.api.backupNow();toast(ok?'تم إنشاء نسخة احتياطية':'لا توجد بيانات للنسخ');render()}
+async function backupNow(){const ok=await window.api.backupNow();toast(ok?T('toastBackupCreated'):T('toastNoDataToBackup'));render()}
 function restoreFromFile(p){
- confirmBox('استعادة نسخة احتياطية','سيتم استبدال جميع البيانات الحالية بمحتوى هذه النسخة.',async()=>{
+ confirmBox(T('confirmRestoreBackup'),T('confirmRestoreBackupBody'),async()=>{
   const data=await window.api.restoreBackupFile(p);
-  if(data){db=data;render();toast('تمت الاستعادة بنجاح')}else toast('فشلت الاستعادة — ملف غير صالح');
- },'استعادة');
+  if(data){db=data;render();toast(T('toastRestored'))}else toast(T('toastRestoreFailed'));
+ },T('restore'));
+}
+/* language is one shared setting (like backup settings) — persisted then the whole app re-renders
+   in place, no reload needed since every string already reads through T()/LANG at render time */
+async function changeLang(l){
+ if(l===LANG)return;
+ await window.api.setLang(l);
+ LANG=l;
+ document.documentElement.lang=l;
+ $('#madeBy').textContent=T('madeBy');
+ $('#whatsappLbl').textContent=T('whatsapp');
+ if(CU){$('#logoutBtn').title=T('logout');$('#logoutBtn').setAttribute('aria-label',T('logout'));}
+ toast(T('toastLangSaved'));
+ buildNav();render();
 }
 
 /* ---------- users CRUD ---------- */
 function userForm(u={}){
- return F('un','اسم المستخدم *',`<input id="un" value="${esc(u.name||'')}">`)
- +F('up',u.id?'كلمة المرور (اتركها فارغة للإبقاء عليها)':'كلمة المرور *',`<input id="up" type="password">`)
- +`<div class="field"><label>الصلاحيات</label>
-   <div class="permrow"><input type="checkbox" id="uadmin" ${u.isAdmin?'checked':''} onchange="document.getElementById('permlist').style.opacity=this.checked?.4:1"> <b>مدير (كل الصلاحيات + إدارة المستخدمين)</b></div>
-   <div id="permlist" style="opacity:${u.isAdmin?.4:1}">${PERMS.map(([k,l])=>`<div class="permrow"><input type="checkbox" id="perm-${k}" ${u.perms&&u.perms[k]?'checked':''}> ${l}</div>`).join('')}</div></div>`;
+ return F('un',T('username'),`<input id="un" value="${esc(u.name||'')}">`)
+ +F('up',u.id?T('passwordKeep'):T('passwordSet'),`<input id="up" type="password">`)
+ +`<div class="field"><label>${T('permsLabel')}</label>
+   <div class="permrow"><input type="checkbox" id="uadmin" ${u.isAdmin?'checked':''} onchange="document.getElementById('permlist').style.opacity=this.checked?.4:1"> <b>${T('adminPerm')}</b></div>
+   <div id="permlist" style="opacity:${u.isAdmin?.4:1}">${PERMS().map(([k,l])=>`<div class="permrow"><input type="checkbox" id="perm-${k}" ${u.perms&&u.perms[k]?'checked':''}> ${l}</div>`).join('')}</div></div>`;
 }
 function readUserForm(existing){
  const name=$('#un').value.trim();
- if(!name)return fieldErr('un','اكتب اسم المستخدم'),null;
+ if(!name)return fieldErr('un',T('errUsername')),null;
  const pass=$('#up').value;
- if(!existing&&!pass)return fieldErr('up','اكتب كلمة المرور'),null;
- const perms={};PERMS.forEach(([k])=>perms[k]=$('#perm-'+k).checked);
+ if(!existing&&!pass)return fieldErr('up',T('errPassword')),null;
+ const perms={};PERMS().forEach(([k])=>perms[k]=$('#perm-'+k).checked);
  return {name,pass:pass||undefined,isAdmin:$('#uadmin').checked,perms};
 }
 function newUser(){
- modal('إضافة مستخدم',userForm(),()=>{
+ modal(T('addUser'),userForm(),()=>{
   const v=readUserForm(false);if(!v)return false;
   window.api.addUser({id:crypto.randomUUID(),...v}).then(()=>render());
-  toast('تمت إضافة المستخدم');return true});
+  toast(T('toastUsersAdded'));return true});
 }
 async function editUser(id){
  const u=(await window.api.listUsers()).find(x=>x.id===id);
- modal('تعديل مستخدم',userForm(u),()=>{
+ modal(T('editUserTitle'),userForm(u),()=>{
   const v=readUserForm(true);if(!v)return false;
   window.api.updateUser({id,...v}).then(()=>{
    if(CU.id===id){CU={...CU,name:v.name,isAdmin:v.isAdmin,perms:v.perms};buildNav()}
    render();
   });
-  toast('تم حفظ التعديل');return true});
+  toast(T('toastUserSaved'));return true});
 }
 async function delUser(id){
  const u=(await window.api.listUsers()).find(x=>x.id===id);
- confirmBox('حذف مستخدم',`سيتم حذف حساب <b>${esc(u.name)}</b>. لا يؤثر على بيانات العمال والمشاريع.`,async()=>{
+ confirmBox(T('confirmDeleteUser'),T('confirmDeleteUserBody').replace('{name}',`<b>${esc(u.name)}</b>`),async()=>{
   const ok=await window.api.deleteUser(id);
-  toast(ok?'تم حذف المستخدم':'لا يمكن حذف آخر مدير');render();
+  toast(ok?T('toastUserDeleted'):T('toastUserDeleteBlocked'));render();
  });
 }
 
@@ -750,34 +770,35 @@ async function delUser(id){
 function authScreen(state){
  const wrap=document.createElement('div');wrap.id='auth';
  const mark=`<div class="amark"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a7 7 0 0 0-7 7v2h14v-2a7 7 0 0 0-7-7Z"/><path d="M3 15h18"/><path d="M12 3v4"/></svg></div>`;
+ const langToggle=`<div class="userpick" style="margin-bottom:14px"><button type="button" class="${LANG==='ar'?'sel':''}" onclick="event.preventDefault();changeLangPre('ar')">${T('langArabic')}</button><button type="button" class="${LANG==='he'?'sel':''}" onclick="event.preventDefault();changeLangPre('he')">${T('langHebrew')}</button></div>`;
  if(state.needsSetup){
-  wrap.innerHTML=`<div class="authbox">${mark}<h2>أهلاً بك في يوميات العمال</h2><p class="sub">أنشئ حساب المدير — يتحكم بكل شيء ويضيف المستخدمين</p>
-   ${F('an','اسمك',`<input id="an">`)}${F('ap','كلمة المرور',`<input id="ap" type="password">`)}${F('ap2','تأكيد كلمة المرور',`<input id="ap2" type="password">`)}
-   <button class="btn primary wide" id="authGo">إنشاء الحساب والدخول</button></div>`;
+  wrap.innerHTML=`<div class="authbox">${mark}<h2>${T('welcomeSetup')}</h2><p class="sub">${T('setupHint')}</p>${langToggle}
+   ${F('an',T('yourName'),`<input id="an">`)}${F('ap',T('passwordLabel'),`<input id="ap" type="password">`)}${F('ap2',T('confirmPassword'),`<input id="ap2" type="password">`)}
+   <button class="btn primary wide" id="authGo">${T('createAccount')}</button></div>`;
  }else{
-  wrap.innerHTML=`<div class="authbox">${mark}<h2>تسجيل الدخول</h2><p class="sub">اختر المستخدم وأدخل كلمة المرور</p>
+  wrap.innerHTML=`<div class="authbox">${mark}<h2>${T('loginTitle')}</h2><p class="sub">${T('loginHint')}</p>${langToggle}
    <div class="userpick">${state.names.map(n=>`<button data-n="${esc(n)}">${esc(n)}</button>`).join('')}</div>
-   ${F('ap','كلمة المرور',`<input id="ap" type="password">`)}
-   <button class="btn primary wide" id="authGo">دخول</button></div>`;
-  wrap.querySelectorAll('.userpick button').forEach(b=>b.onclick=()=>{
-   wrap.querySelectorAll('.userpick button').forEach(x=>x.classList.remove('sel'));
+   ${F('ap',T('passwordLabel'),`<input id="ap" type="password">`)}
+   <button class="btn primary wide" id="authGo">${T('loginBtn')}</button></div>`;
+  wrap.querySelectorAll('.userpick button[data-n]').forEach(b=>b.onclick=()=>{
+   wrap.querySelectorAll('.userpick button[data-n]').forEach(x=>x.classList.remove('sel'));
    b.classList.add('sel');$('#ap').focus();
   });
-  if(state.names.length===1)wrap.querySelector('.userpick button').classList.add('sel');
+  if(state.names.length===1)wrap.querySelector('.userpick button[data-n]')?.classList.add('sel');
  }
  document.body.appendChild(wrap);
  const go=async()=>{
   if(state.needsSetup){
-   if(!$('#an').value.trim())return fieldErr('an','اكتب اسمك');
-   if(!$('#ap').value)return fieldErr('ap','اكتب كلمة المرور');
-   if($('#ap').value!==$('#ap2').value)return fieldErr('ap2','كلمتا المرور غير متطابقتين');
+   if(!$('#an').value.trim())return fieldErr('an',T('errName'));
+   if(!$('#ap').value)return fieldErr('ap',T('errPassword'));
+   if($('#ap').value!==$('#ap2').value)return fieldErr('ap2',T('errPasswordMismatch'));
    const u=await window.api.setupAdmin({name:$('#an').value.trim(),pass:$('#ap').value});
    if(u)enterApp(u);
   }else{
-   const sel=wrap.querySelector('.userpick button.sel');
-   if(!sel)return fieldErr('ap','اختر المستخدم أولاً');
+   const sel=wrap.querySelector('.userpick button[data-n].sel');
+   if(!sel)return fieldErr('ap',T('errChooseUser'));
    const u=await window.api.login({name:sel.dataset.n,pass:$('#ap').value});
-   if(!u)return fieldErr('ap','كلمة المرور غير صحيحة');
+   if(!u)return fieldErr('ap',T('errWrongPassword'));
    enterApp(u);
   }
  };
@@ -785,20 +806,30 @@ function authScreen(state){
  wrap.addEventListener('keydown',e=>{if(e.key==='Enter')go()});
  const f=wrap.querySelector('input,button');if(f)f.focus();
 }
+/* language toggle before login: same shared setting as Settings, just exposed earlier since the
+   app is otherwise 100% one language even before anyone logs in */
+async function changeLangPre(l){
+ if(l===LANG)return;
+ await window.api.setLang(l);
+ LANG=l;
+ document.documentElement.lang=l;
+ authScreen(await window.api.authState());
+}
 function enterApp(u){
  CU=u;$('#auth')?.remove();$('#logoutBtn').style.display='';
+ $('#logoutBtn').title=T('logout');$('#logoutBtn').setAttribute('aria-label',T('logout'));
  buildNav();page='home';render();
 }
 async function logout(){
  CU=null;$('#logoutBtn').style.display='none';$('#nav').innerHTML='';$('#main').innerHTML='';
- $('#title').textContent='يوميات العمال';$('#subtitle').textContent='إدارة العمال والمشاريع والحسابات';
+ $('#title').textContent=T('appTitle');$('#subtitle').textContent=T('appSubtitle');
  authScreen(await window.api.authState());
 }
 
 /* ---------- modal + validation ---------- */
-function modal(title,body,onSave,saveLabel='حفظ'){
+function modal(title,body,onSave,saveLabel=T('save')){
  const wrap=document.createElement('div');wrap.id='modal';wrap.className='overlay';
- wrap.innerHTML=`<div class="sheet"><div class="head"><span>${title}</span><button class="x" onclick="closeModal()" title="إغلاق" aria-label="إغلاق">${ic.x(17)}</button></div><div class="body">${body}<div class="actions" style="margin-top:14px"><button class="btn primary" id="saveBtn">${saveLabel}</button><button class="btn secondary" onclick="closeModal()">إلغاء</button></div></div></div>`;
+ wrap.innerHTML=`<div class="sheet"><div class="head"><span>${title}</span><button class="x" onclick="closeModal()" title="${T('close')}" aria-label="${T('close')}">${ic.x(17)}</button></div><div class="body">${body}<div class="actions" style="margin-top:14px"><button class="btn primary" id="saveBtn">${saveLabel}</button><button class="btn secondary" onclick="closeModal()">${T('cancel')}</button></div></div></div>`;
  wrap.addEventListener('mousedown',e=>{if(e.target===wrap)closeModal()});
  document.body.appendChild(wrap);
  $('#saveBtn').onclick=()=>{if(onSave())closeModal()};
@@ -814,9 +845,9 @@ function fieldErr(id,msg){
 }
 const F=(id,label,inner)=>`<div class="field"><label for="${id}">${label}</label>${inner}<div class="msg"></div></div>`;
 
-function confirmBox(title,body,onYes,yesLabel='حذف'){
+function confirmBox(title,body,onYes,yesLabel=T('delete')){
  const wrap=document.createElement('div');wrap.id='modal';wrap.className='overlay';
- wrap.innerHTML=`<div class="sheet"><div class="head"><span>${title}</span><button class="x" onclick="closeModal()" title="إغلاق" aria-label="إغلاق">${ic.x(17)}</button></div><div class="body"><div style="display:flex;gap:12px;align-items:flex-start"><span class="tint-red" style="width:38px;height:38px;border-radius:11px;display:grid;place-items:center;flex:none">${ic.warn(19)}</span><p style="margin:6px 0 14px">${body}</p></div><div class="actions"><button class="btn danger" id="yesBtn">${yesLabel}</button><button class="btn secondary" onclick="closeModal()">إلغاء</button></div></div></div>`;
+ wrap.innerHTML=`<div class="sheet"><div class="head"><span>${title}</span><button class="x" onclick="closeModal()" title="${T('close')}" aria-label="${T('close')}">${ic.x(17)}</button></div><div class="body"><div style="display:flex;gap:12px;align-items:flex-start"><span class="tint-red" style="width:38px;height:38px;border-radius:11px;display:grid;place-items:center;flex:none">${ic.warn(19)}</span><p style="margin:6px 0 14px">${body}</p></div><div class="actions"><button class="btn danger" id="yesBtn">${yesLabel}</button><button class="btn secondary" onclick="closeModal()">${T('cancel')}</button></div></div></div>`;
  wrap.addEventListener('mousedown',e=>{if(e.target===wrap)closeModal()});
  document.body.appendChild(wrap);
  $('#yesBtn').onclick=()=>{onYes();closeModal()};
@@ -825,7 +856,7 @@ function confirmBox(title,body,onYes,yesLabel='حذف'){
 /* ---------- worker/project detail view ---------- */
 function viewSheet(title,body){
  const wrap=document.createElement('div');wrap.id='viewsheet';wrap.className='overlay';
- wrap.innerHTML=`<div class="sheet"><div class="head"><span>${title}</span><button class="x" aria-label="إغلاق" title="إغلاق" onclick="closeView()">${ic.x(17)}</button></div><div class="body">${body}</div></div>`;
+ wrap.innerHTML=`<div class="sheet"><div class="head"><span>${title}</span><button class="x" aria-label="${T('close')}" title="${T('close')}" onclick="closeView()">${ic.x(17)}</button></div><div class="body">${body}</div></div>`;
  wrap.addEventListener('mousedown',e=>{if(e.target===wrap)closeView()});
  document.body.appendChild(wrap);
 }
@@ -835,16 +866,16 @@ function workerDetail(workerId,projectId=''){
  _openWorker=projectId?null:workerId;
  closeView();
  const w=db.workers.find(x=>x.id===workerId);
- if(!w){toast('العامل غير موجود');return}
- const head=`<div class="item" style="padding-top:0;border:0"><div class="lead"><span class="avatar">${esc(w.name.trim().charAt(0))}</span><div class="tx"><h3>${esc(w.name)}</h3><small>${esc(w.job||'عامل')}${w.phone?' • <span class="num">'+esc(w.phone)+'</span>':''}${can('private')&&w.idNumber?' • هوية <span class="num">'+esc(w.idNumber)+'</span>':''}</small></div></div></div>`;
+ if(!w){toast(T('toastWorkerNotFound'));return}
+ const head=`<div class="item" style="padding-top:0;border:0"><div class="lead"><span class="avatar">${esc(w.name.trim().charAt(0))}</span><div class="tx"><h3>${esc(w.name)}</h3><small>${esc(w.job||T('worker'))}${w.phone?' • <span class="num">'+esc(w.phone)+'</span>':''}${can('private')&&w.idNumber?' • '+T('idLabelShort')+' <span class="num">'+esc(w.idNumber)+'</span>':''}</small></div></div></div>`;
  let body;
  if(projectId){
   const logs=db.logs.filter(l=>l.workerId===workerId&&l.projectId===projectId);
   const hours=logs.reduce((a,l)=>a+Number(l.hours||0),0), wage=logs.reduce((a,l)=>a+Number(l.wage||0),0);
-  body=head+`<hr><span class="muted">المشروع</span><h3 style="margin:2px 0 10px">${esc(projectName(projectId))}</h3>
-  <div class="row3"><div><span class="muted">الأيام</span><br><b class="num">${logs.length}</b></div><div><span class="muted">الساعات</span><br><b class="num">${hours}</b></div>${can('money')?`<div><span class="muted">الأجر</span><br><b style="color:var(--green)">${money(wage)}</b></div>`:'<div></div>'}</div>
-  <hr>${logs.length?logs.map(l=>logRow(l,true)).join(''):emptyState(ic.cal,'لا توجد يوميات','لا يوجد لهذا العامل يوميات في هذا المشروع')}
-  <button class="btn secondary wide" style="margin-top:10px" onclick="workerDetail('${workerId}')">${ic.users(15)} عرض الملف الكامل</button>`;
+  body=head+`<hr><span class="muted">${T('project')}</span><h3 style="margin:2px 0 10px">${esc(projectName(projectId))}</h3>
+  <div class="row3"><div><span class="muted">${T('days')}</span><br><b class="num">${logs.length}</b></div><div><span class="muted">${T('hours')}</span><br><b class="num">${hours}</b></div>${can('money')?`<div><span class="muted">${T('workerWage')}</span><br><b style="color:var(--green)">${money(wage)}</b></div>`:'<div></div>'}</div>
+  <hr>${logs.length?logs.map(l=>logRow(l,true)).join(''):emptyState(ic.cal,T('noLogsTitle'),T('noLogsProjectHint'))}
+  <button class="btn secondary wide" style="margin-top:10px" onclick="workerDetail('${workerId}')">${ic.users(15)} ${T('fullProfile')}</button>`;
  }else{
   const logs=db.logs.filter(l=>l.workerId===workerId);
   const earned=logs.reduce((a,l)=>a+Number(l.wage||0),0);
@@ -854,32 +885,32 @@ function workerDetail(workerId,projectId=''){
   const orphanRows=[...orphanLogs].sort((a,b)=>b.date.localeCompare(a.date)).map(l=>logRow(l,true)).join('');
   const orphanWarning=orphanLogs.length?`<div class="card" style="border:1px solid var(--red);background:var(--red-soft);margin:10px 0 0">
    <div style="display:flex;gap:10px;align-items:flex-start"><span class="tint-red" style="width:34px;height:34px;border-radius:10px;display:grid;place-items:center;flex:none">${ic.warn(17)}</span>
-   <div style="flex:1;min-width:0"><b style="color:var(--red)"><span class="num">${orphanLogs.length}</span> يومية بدون مشروع محدد</b>
-   <p class="muted" style="margin:4px 0 10px">يوميات قديمة سُجّلت قبل إلزام اختيار المشروع${can('money')?` بقيمة ${money(orphanWage)}`:''}. اضغط ${ic.edit(13)} لكل يومية لاختيار مشروع لها، أو احذفها.</p>
+   <div style="flex:1;min-width:0"><b style="color:var(--red)"><span class="num">${orphanLogs.length}</span> ${T('orphanLogsWarn')}</b>
+   <p class="muted" style="margin:4px 0 10px">${T('orphanLogsHint')}${can('money')?` ${T('due')} ${money(orphanWage)}`:''}. ${T('orphanLogsAction')}</p>
    ${orphanRows}
-   <button class="btn danger" style="margin-top:10px" onclick="deleteOrphanLogs('${workerId}')">${ic.trash(16)} حذف كل اليوميات بدون مشروع</button></div></div></div>`:'';
+   <button class="btn danger" style="margin-top:10px" onclick="deleteOrphanLogs('${workerId}')">${ic.trash(16)} ${T('deleteOrphans')}</button></div></div></div>`:'';
   const byP={};logs.forEach(l=>{const k=l.projectId||'';byP[k]=byP[k]||{days:0,wage:0};byP[k].days++;byP[k].wage+=Number(l.wage||0)});
-  const projRows=Object.entries(byP).map(([pid,v])=>`<div class="item"><div class="tx"><b>${esc(pid?projectName(pid):'بدون مشروع')}</b></div><div style="text-align:left"><span class="num">${v.days}</span> يوم${can('money')?` • ${money(v.wage)}`:''}</div></div>`).join('')||emptyState(ic.crane,'لا مشاريع','لم يعمل هذا العامل على أي مشروع بعد');
+  const projRows=Object.entries(byP).map(([pid,v])=>`<div class="item"><div class="tx"><b>${esc(pid?projectName(pid):T('noProjectLabel'))}</b></div><div style="text-align:left"><span class="num">${v.days}</span> ${T('logShort')}${can('money')?` • ${money(v.wage)}`:''}</div></div>`).join('')||emptyState(ic.crane,T('noProjectsForWorker'),T('noProjectsForWorkerHint'));
   /* diaries split per month, newest month open — native <details>, so no collapse state to track */
   const monthGroups=groupByMonth([...logs].sort((a,b)=>b.date.localeCompare(a.date)));
   const allLogsHtml=monthGroups.length?monthGroups.map(([k,ls],i)=>{
    const wage=ls.reduce((a,l)=>a+Number(l.wage||0),0),hrs=ls.reduce((a,l)=>a+Number(l.hours||0),0);
-   return `<details class="msec"${i===0?' open':''}><summary><span>${monthLabel(k,true)}</span><span class="msum"><span class="num">${ls.length}</span> يوم · <span class="num">${hrs}</span> ساعة${can('money')?' · '+money(wage):''}</span></summary>
+   return `<details class="msec"${i===0?' open':''}><summary><span>${ML(k,true)}</span><span class="msum"><span class="num">${ls.length}</span> ${T('logShort')} · <span class="num">${hrs}</span> ${T('hourUnit')}${can('money')?' · '+money(wage):''}</span></summary>
    <div class="mbody">${ls.map(l=>logRow(l,true)).join('')}
-   ${k?`<button class="btn secondary wide" style="margin-top:8px" onclick="printWorkerFull('${workerId}','${k}')">${ic.print(15)} طباعة كشف ${monthLabel(k,true)}</button>`:''}</div></details>`;
-  }).join(''):emptyState(ic.cal,'لا توجد يوميات','لا توجد يوميات لهذا العامل بعد');
+   ${k?`<button class="btn secondary wide" style="margin-top:8px" onclick="printWorkerFull('${workerId}','${k}')">${ic.print(15)} ${T('printMonthSlip')} ${ML(k,true)}</button>`:''}</div></details>`;
+  }).join(''):emptyState(ic.cal,T('noLogsTitle'),T('noLogsHint'));
   const pays=db.payments.filter(p=>p.workerId===workerId).slice(-5).reverse();
-  const paysHtml=pays.map(p=>`<div class="item"><div class="tx"><small><span class="num">${esc(p.date)}</span> • ${esc(p.note||'دفعة')}</small></div><div class="rowicons"><b style="color:var(--orange)">${money(p.amount)}</b>${can('editDelete')?`
-   <button class="iconbtn" title="تعديل" onclick="editPayment('${p.id}')">${ic.edit(16)}</button>
-   <button class="iconbtn del" title="حذف" onclick="delPayment('${p.id}')">${ic.trash(16)}</button>`:''}</div></div>`).join('')||emptyState(ic.pay,'لا دفعات','لا توجد دفعات لهذا العامل بعد');
+  const paysHtml=pays.map(p=>`<div class="item"><div class="tx"><small><span class="num">${esc(p.date)}</span> • ${esc(p.note||T('payment'))}</small></div><div class="rowicons"><b style="color:var(--orange)">${money(p.amount)}</b>${can('editDelete')?`
+   <button class="iconbtn" title="${T('edit')}" onclick="editPayment('${p.id}')">${ic.edit(16)}</button>
+   <button class="iconbtn del" title="${T('delete')}" onclick="delPayment('${p.id}')">${ic.trash(16)}</button>`:''}</div></div>`).join('')||emptyState(ic.pay,T('noPaymentsTitle'),T('noPaymentsHint'));
   body=head
    +orphanWarning
-   +(can('money')?`<hr><div class="row3"><div><span class="muted">المستحق</span><br><b style="color:var(--green)">${money(earned)}</b></div><div><span class="muted">المدفوع</span><br><b style="color:var(--orange)">${money(paid)}</b></div><div><span class="muted">الرصيد</span><br><b>${money(earned-paid)}</b></div></div>`:'')
-   +`<hr><span class="muted">المشاريع</span>${projRows}`
-   +`<hr><span class="muted">اليوميات حسب الشهر</span>${allLogsHtml}`
-   +(can('money')?`<hr><span class="muted">آخر الدفعات</span>${paysHtml}`:'')
-   +`<div class="actions" style="margin-top:14px">${can('logs')?`<button class="btn primary" onclick="newLog('${workerId}')">${ic.plus(16)} يومية</button><button class="btn success" onclick="newPayment('${workerId}')">${ic.pay(16)} دفعة</button>`:''}</div>`
-   +(can('logs')?`<button class="btn secondary wide" style="margin-top:10px" onclick="printWorkerFull('${workerId}')">${ic.print(16)} طباعة كل الشهور (صفحة لكل شهر)</button>`:'');
+   +(can('money')?`<hr><div class="row3"><div><span class="muted">${T('due')}</span><br><b style="color:var(--green)">${money(earned)}</b></div><div><span class="muted">${T('paidAmount')}</span><br><b style="color:var(--orange)">${money(paid)}</b></div><div><span class="muted">${T('balance')}</span><br><b>${money(earned-paid)}</b></div></div>`:'')
+   +`<hr><span class="muted">${T('navProjects')}</span>${projRows}`
+   +`<hr><span class="muted">${T('monthsByLogs')}</span>${allLogsHtml}`
+   +(can('money')?`<hr><span class="muted">${T('lastPayments')}</span>${paysHtml}`:'')
+   +`<div class="actions" style="margin-top:14px">${can('logs')?`<button class="btn primary" onclick="newLog('${workerId}')">${ic.plus(16)} ${T('addLog')}</button><button class="btn success" onclick="newPayment('${workerId}')">${ic.pay(16)} ${T('payment')}</button>`:''}</div>`
+   +(can('logs')?`<button class="btn secondary wide" style="margin-top:10px" onclick="printWorkerFull('${workerId}')">${ic.print(16)} ${T('printAllMonths')}</button>`:'');
  }
  viewSheet(w.name,body);
 }
@@ -889,129 +920,129 @@ let _photos={};
 function renderPhotoBox(kind){
  const box=$('#ph-'+kind); if(!box)return;
  const name=_photos[kind];
- const empty=`<button type="button" class="addph" onclick="pickPhoto('${kind}')">${ic.plus(18)} إضافة صورة</button>`;
+ const empty=`<button type="button" class="addph" onclick="pickPhoto('${kind}')">${ic.plus(18)} ${T('addPhoto')}</button>`;
  if(!name){box.innerHTML=empty;return}
  window.api.photoUrl(name).then(u=>{
-  box.innerHTML=u?`<img src="${u}" onclick="window.api.openPhoto('${name}')" title="اضغط للعرض"><button type="button" class="rmph" onclick="removePhoto('${kind}')" title="إزالة">${ic.x(14)}</button>`:empty;
+  box.innerHTML=u?`<img src="${u}" onclick="window.api.openPhoto('${name}')" title="${T('viewPhoto')}"><button type="button" class="rmph" onclick="removePhoto('${kind}')" title="${T('removePhoto')}">${ic.x(14)}</button>`:empty;
  });
 }
 async function pickPhoto(kind){const r=await window.api.pickPhoto();if(!r)return;_photos[kind]=r.name;renderPhotoBox(kind)}
 function removePhoto(kind){_photos[kind]='';renderPhotoBox(kind)}
 function workerForm(w={}){
- return F('n','اسم العامل *',`<input id="n" value="${esc(w.name||'')}">`)
- +`<div class="row">${F('p','رقم الهاتف',`<input id="p" inputmode="tel" value="${esc(w.phone||'')}">`)}${F('j','المهنة',`<input id="j" placeholder="سباك، كهربائي..." value="${esc(w.job||'')}">`)}</div>`
- +`<div class="row">${F('idn','رقم الهوية',`<input id="idn" inputmode="numeric" value="${esc(w.idNumber||'')}">`)}${F('w','الأجرة اليومية الافتراضية',`<input id="w" type="text" inputmode="decimal" oninput="digits(this)" value="${w.defaultWage??''}">`)}</div>`
- +F('wp','ربحك الافتراضي من يومية هذا العامل',`<input id="wp" type="text" inputmode="decimal" oninput="digits(this)" value="${w.defaultProfit??0}">`)
- +`<div class="row">${F('bn','اسم البنك',`<input id="bn" value="${esc(w.bankName||'')}">`)}${F('ba','رقم الحساب البنكي',`<input id="ba" inputmode="numeric" value="${esc(w.bankAccount||'')}">`)}</div>`
- +`<div class="row"><div class="field"><label>صورة الهوية</label><div class="photobox" id="ph-idPhoto"></div></div><div class="field"><label>صورة تصريح العمل</label><div class="photobox" id="ph-permitPhoto"></div></div></div>`;
+ return F('n',T('workerName'),`<input id="n" value="${esc(w.name||'')}">`)
+ +`<div class="row">${F('p',T('phone'),`<input id="p" inputmode="tel" value="${esc(w.phone||'')}">`)}${F('j',T('job'),`<input id="j" placeholder="${T('jobPlaceholder')}" value="${esc(w.job||'')}">`)}</div>`
+ +`<div class="row">${F('idn',T('idNumber'),`<input id="idn" inputmode="numeric" value="${esc(w.idNumber||'')}">`)}${F('w',T('defaultDailyWage'),`<input id="w" type="text" inputmode="decimal" oninput="digits(this)" value="${w.defaultWage??''}">`)}</div>`
+ +F('wp',T('defaultProfit'),`<input id="wp" type="text" inputmode="decimal" oninput="digits(this)" value="${w.defaultProfit??0}">`)
+ +`<div class="row">${F('bn',T('bankName'),`<input id="bn" value="${esc(w.bankName||'')}">`)}${F('ba',T('bankAccount'),`<input id="ba" inputmode="numeric" value="${esc(w.bankAccount||'')}">`)}</div>`
+ +`<div class="row"><div class="field"><label>${T('idPhoto')}</label><div class="photobox" id="ph-idPhoto"></div></div><div class="field"><label>${T('permitPhoto')}</label><div class="photobox" id="ph-permitPhoto"></div></div></div>`;
 }
 function readWorkerExtra(){
  return {idNumber:$('#idn').value.trim(),bankName:$('#bn').value.trim(),bankAccount:$('#ba').value.trim(),idPhoto:_photos.idPhoto||'',permitPhoto:_photos.permitPhoto||''};
 }
 function newWorker(){
  _photos={};
- modal('إضافة عامل',workerForm(),()=>{
-  if(!$('#n').value.trim())return fieldErr('n','اكتب اسم العامل');
+ modal(T('newWorkerTitle'),workerForm(),()=>{
+  if(!$('#n').value.trim())return fieldErr('n',T('errWorkerName'));
   const w={id:crypto.randomUUID(),name:$('#n').value.trim(),phone:$('#p').value,job:$('#j').value,defaultWage:Number($('#w').value||0),defaultProfit:Number($('#wp').value||0),...readWorkerExtra()};
-  db.workers.push(w);window.api.addWorker(w);render();toast('تمت إضافة العامل');return true});
+  db.workers.push(w);window.api.addWorker(w);render();toast(T('toastWorkerAdded'));return true});
  renderPhotoBox('idPhoto');renderPhotoBox('permitPhoto');
 }
 function editWorker(id){
  const w=db.workers.find(x=>x.id===id);
  _photos={idPhoto:w.idPhoto||'',permitPhoto:w.permitPhoto||''};
- modal('تعديل عامل',workerForm(w),()=>{
-  if(!$('#n').value.trim())return fieldErr('n','اكتب اسم العامل');
+ modal(T('editWorkerTitle'),workerForm(w),()=>{
+  if(!$('#n').value.trim())return fieldErr('n',T('errWorkerName'));
   Object.assign(w,{name:$('#n').value.trim(),phone:$('#p').value,job:$('#j').value,defaultWage:Number($('#w').value||0),defaultProfit:Number($('#wp').value||0)},readWorkerExtra());
-  window.api.updateWorker(w);render();toast('تم حفظ التعديل');return true});
+  window.api.updateWorker(w);render();toast(T('toastWorkerSaved'));return true});
  renderPhotoBox('idPhoto');renderPhotoBox('permitPhoto');
 }
 function delWorker(id){
  const w=db.workers.find(x=>x.id===id);
  const logs=db.logs.filter(l=>l.workerId===id), pays=db.payments.filter(p=>p.workerId===id);
- confirmBox('حذف عامل',`سيتم حذف <b>${esc(w.name)}</b> مع كل يومياته (<span class="num">${logs.length}</span>) ودفعاته (<span class="num">${pays.length}</span>). يمكن التراجع خلال ثوانٍ من الإشعار.`,()=>{
+ confirmBox(T('confirmDeleteWorker'),T('confirmDeleteWorkerBody').replace('{name}',`<b>${esc(w.name)}</b>`).replace('{logs}',`<span class="num">${logs.length}</span>`).replace('{pays}',`<span class="num">${pays.length}</span>`),()=>{
   db.workers=db.workers.filter(x=>x.id!==id);
   db.logs=db.logs.filter(l=>l.workerId!==id);
   db.payments=db.payments.filter(p=>p.workerId!==id);
   window.api.deleteWorker(id);render();
-  undoToast('تم حذف العامل',()=>{
+  undoToast(T('toastWorkerDeleted'),()=>{
    db.workers.push(w);window.api.addWorker(w);
    logs.forEach(l=>{db.logs.push(l);window.api.addLog(l)});
    pays.forEach(p=>{db.payments.push(p);window.api.addPayment(p)});
-   render();toast('تم استرجاع العامل');
+   render();toast(T('toastWorkerRestored'));
   });
  });
 }
 
 /* ---------- projects CRUD ---------- */
 function projectForm(p={}){
- return F('n','اسم المشروع *',`<input id="n" value="${esc(p.name||'')}">`)
- +F('l','الموقع',`<input id="l" value="${esc(p.location||'')}">`)
- +F('d','تاريخ البداية',`<input id="d" type="date" value="${esc(p.start||today())}">`);
+ return F('n',T('projectName'),`<input id="n" value="${esc(p.name||'')}">`)
+ +F('l',T('location'),`<input id="l" value="${esc(p.location||'')}">`)
+ +F('d',T('startDate'),`<input id="d" type="date" value="${esc(p.start||today())}">`);
 }
 function newProject(){
- modal('إضافة مشروع',projectForm(),()=>{
-  if(!$('#n').value.trim())return fieldErr('n','اكتب اسم المشروع');
+ modal(T('newProjectTitle'),projectForm(),()=>{
+  if(!$('#n').value.trim())return fieldErr('n',T('errProjectName'));
   const p={id:crypto.randomUUID(),name:$('#n').value.trim(),location:$('#l').value,start:$('#d').value};
-  db.projects.push(p);window.api.addProject(p);render();toast('تمت إضافة المشروع');return true});
+  db.projects.push(p);window.api.addProject(p);render();toast(T('toastProjectAdded'));return true});
 }
 function editProject(id){
  const p=db.projects.find(x=>x.id===id);
- modal('تعديل مشروع',projectForm(p),()=>{
-  if(!$('#n').value.trim())return fieldErr('n','اكتب اسم المشروع');
+ modal(T('editProjectTitle'),projectForm(p),()=>{
+  if(!$('#n').value.trim())return fieldErr('n',T('errProjectName'));
   Object.assign(p,{name:$('#n').value.trim(),location:$('#l').value,start:$('#d').value});
-  window.api.updateProject(p);render();toast('تم حفظ التعديل');return true});
+  window.api.updateProject(p);render();toast(T('toastProjectSaved'));return true});
 }
 function delProject(id){
  const p=db.projects.find(x=>x.id===id);
  const pays=db.projectPayments.filter(x=>x.projectId===id);
- confirmBox('حذف مشروع',`سيتم حذف <b>${esc(p.name)}</b> ودفعاته المقبوضة. اليوميات المسجلة عليه تبقى محفوظة بدون مشروع.`,()=>{
+ confirmBox(T('confirmDeleteProject'),T('confirmDeleteProjectBody').replace('{name}',`<b>${esc(p.name)}</b>`),()=>{
   db.projects=db.projects.filter(x=>x.id!==id);
   db.projectPayments=db.projectPayments.filter(x=>x.projectId!==id);
   window.api.deleteProject(id);render();
-  undoToast('تم حذف المشروع',()=>{
+  undoToast(T('toastProjectDeleted'),()=>{
    db.projects.push(p);window.api.addProject(p);
    pays.forEach(x=>{db.projectPayments.push(x);window.api.addProjectPayment(x)});
-   render();toast('تم استرجاع المشروع');
+   render();toast(T('toastProjectRestored'));
   });
  });
 }
 function toggleProjectDone(id){
  const p=db.projects.find(x=>x.id===id);
  p.done=!p.done;window.api.updateProject(p);filterProjects();
- toast(p.done?'تم وضع علامة "منتهي" على المشروع':'أعيد تنشيط المشروع');
+ toast(p.done?T('toastProjectFinished'):T('toastProjectReactivated'));
 }
 
 /* ---------- project payments CRUD ---------- */
 function projectPaymentForm(pp={},preProject=''){
  const pid=pp.projectId||preProject;
  const opts=db.projects.map(p=>`<option value="${p.id}" ${p.id===pid?'selected':''}>${esc(p.name)}</option>`).join('');
- return F('pj','المشروع *',`<select id="pj"><option value="">اختر المشروع</option>${opts}</select>`)
- +`<div class="row">${F('am','المبلغ *',`<input id="am" type="text" inputmode="decimal" oninput="digits(this)" value="${pp.amount??''}">`)}${F('dt','التاريخ',`<input id="dt" type="date" value="${esc(pp.date||today())}">`)}</div>`
- +F('note','ملاحظات',`<input id="note" placeholder="دفعة من صاحب العمل..." value="${esc(pp.note||'')}">`);
+ return F('pj',T('project'),`<select id="pj"><option value="">${T('chooseProject')}</option>${opts}</select>`)
+ +`<div class="row">${F('am',T('amount'),`<input id="am" type="text" inputmode="decimal" oninput="digits(this)" value="${pp.amount??''}">`)}${F('dt',T('date'),`<input id="dt" type="date" value="${esc(pp.date||today())}">`)}</div>`
+ +F('note',T('notes'),`<input id="note" placeholder="${T('fromOwnerNote')}" value="${esc(pp.note||'')}">`);
 }
 function readProjectPaymentForm(){
- if(!$('#pj').value){fieldErr('pj','اختر المشروع');return null}
- if(!Number($('#am').value)){fieldErr('am','اكتب المبلغ');return null}
+ if(!$('#pj').value){fieldErr('pj',T('errChooseProject'));return null}
+ if(!Number($('#am').value)){fieldErr('am',T('errAmount'));return null}
  return {projectId:$('#pj').value,amount:Number($('#am').value),date:$('#dt').value,note:$('#note').value};
 }
 function newProjectPayment(projectId=''){
- modal('تسجيل دفعة مقبوضة',projectPaymentForm({},projectId),()=>{
+ modal(T('newProjPaymentTitle'),projectPaymentForm({},projectId),()=>{
   const v=readProjectPaymentForm();if(!v)return false;
   const pp={id:crypto.randomUUID(),...v};
-  db.projectPayments.push(pp);window.api.addProjectPayment(pp);render();toast('تم تسجيل الدفعة المقبوضة');return true});
+  db.projectPayments.push(pp);window.api.addProjectPayment(pp);render();toast(T('toastProjPaymentAdded'));return true});
 }
 function editProjectPayment(id){
  const pp=db.projectPayments.find(x=>x.id===id);
- modal('تعديل دفعة مقبوضة',projectPaymentForm(pp),()=>{
+ modal(T('editProjPaymentTitle'),projectPaymentForm(pp),()=>{
   const v=readProjectPaymentForm();if(!v)return false;
-  Object.assign(pp,v);window.api.updateProjectPayment(pp);render();toast('تم حفظ التعديل');return true});
+  Object.assign(pp,v);window.api.updateProjectPayment(pp);render();toast(T('toastProjPaymentSaved'));return true});
 }
 function delProjectPayment(id){
  const pp=db.projectPayments.find(x=>x.id===id);
- confirmBox('حذف دفعة مقبوضة',`حذف دفعة <b>${esc(projectName(pp.projectId))}</b> بمبلغ ${money(pp.amount)}؟`,()=>{
+ confirmBox(T('confirmDeleteProjPayment'),T('confirmDeleteProjPaymentBody').replace('{name}',`<b>${esc(projectName(pp.projectId))}</b>`).replace('{amt}',money(pp.amount)),()=>{
   db.projectPayments=db.projectPayments.filter(x=>x.id!==id);
   window.api.deleteProjectPayment(id);render();
-  undoToast('تم حذف الدفعة',()=>{db.projectPayments.push(pp);window.api.addProjectPayment(pp);render();toast('تم استرجاع الدفعة');});
+  undoToast(T('toastProjPaymentDeleted'),()=>{db.projectPayments.push(pp);window.api.addProjectPayment(pp);render();toast(T('toastProjPaymentRestored'));});
  });
 }
 /* company-facing project print: shows the billed amount only, never worker wage or your profit.
@@ -1025,23 +1056,23 @@ function companyReportHtml(projectId,monthKey=''){
  const totalBilled=logs.reduce((a,l)=>a+Number(l.wage||0)+Number(l.profit||0),0);
  const totalReceived=pays.reduce((a,x)=>a+Number(x.amount||0),0);
  const logRow=l=>`<tr><td>${esc(l.date)}</td><td>${esc(workerName(l.workerId))}</td><td>${esc(l.hours||0)}</td><td>${esc(l.type||'')}</td><td>${money(Number(l.wage||0)+Number(l.profit||0))}</td></tr>`;
- const logsRows=!logs.length?`<tr><td colspan="5">لا يوجد سجلات</td></tr>`
+ const logsRows=!logs.length?`<tr><td colspan="5">${T('noRecords')}</td></tr>`
   :monthKey?logs.map(logRow).join('')
   :groupByMonth(logs,false).map(([k,ls])=>{
     const sub=ls.reduce((a,l)=>a+Number(l.wage||0)+Number(l.profit||0),0);
-    return `<tr class="mhead"><td colspan="5">${monthLabel(k)}</td></tr>`+ls.map(logRow).join('')
-     +`<tr class="msub"><td colspan="4">إجمالي ${monthLabel(k,true)} — <span class="num">${ls.length}</span> يوم</td><td>${money(sub)}</td></tr>`;
+    return `<tr class="mhead"><td colspan="5">${ML(k)}</td></tr>`+ls.map(logRow).join('')
+     +`<tr class="msub"><td colspan="4">${T('monthlyTotal')} ${ML(k,true)} — <span class="num">${ls.length}</span> ${T('logShort')}</td><td>${money(sub)}</td></tr>`;
    }).join('');
- const paysRows=pays.map(x=>`<tr><td>${esc(x.date)}</td><td>${esc(x.note||'')}</td><td>${money(x.amount)}</td></tr>`).join('')||`<tr><td colspan="3">لا يوجد دفعات</td></tr>`;
+ const paysRows=pays.map(x=>`<tr><td>${esc(x.date)}</td><td>${esc(x.note||'')}</td><td>${money(x.amount)}</td></tr>`).join('')||`<tr><td colspan="3">${T('noPaymentsDoc')}</td></tr>`;
  return `<p class="muted">${esc(p?.location||'')}${p?.start?' • '+esc(p.start):''}</p>
- <h4>سجلات العمل</h4><table class="ptable"><thead><tr><th>التاريخ</th><th>العامل</th><th>الساعات</th><th>نوع العمل</th><th>المبلغ</th></tr></thead><tbody>${logsRows}</tbody><tfoot><tr><td colspan="4">الإجمالي</td><td>${money(totalBilled)}</td></tr></tfoot></table>
- <h4>الدفعات المقبوضة</h4><table class="ptable"><thead><tr><th>التاريخ</th><th>ملاحظات</th><th>المبلغ</th></tr></thead><tbody>${paysRows}</tbody><tfoot><tr><td colspan="2">الإجمالي</td><td>${money(totalReceived)}</td></tr></tfoot></table>`;
+ <h4>${T('workRecords')}</h4><table class="ptable"><thead><tr><th>${T('date')}</th><th>${T('worker')}</th><th>${T('hours')}</th><th>${T('workType')}</th><th>${T('amountPlain')}</th></tr></thead><tbody>${logsRows}</tbody><tfoot><tr><td colspan="4">${T('grandTotal')}</td><td>${money(totalBilled)}</td></tr></tfoot></table>
+ <h4>${T('receivedPayments')}</h4><table class="ptable"><thead><tr><th>${T('date')}</th><th>${T('notes')}</th><th>${T('amountPlain')}</th></tr></thead><tbody>${paysRows}</tbody><tfoot><tr><td colspan="2">${T('grandTotal')}</td><td>${money(totalReceived)}</td></tr></tfoot></table>`;
 }
 function printProject(id,monthKey=''){
  const p=db.projects.find(x=>x.id===id);
- const base=p?p.name:'مشروع';
- const title=monthKey?`${base} — ${monthLabel(monthKey,true)}`:base;
- const docType=monthKey?`تقرير مشروع — ${monthLabel(monthKey)}`:'تقرير مشروع — كل الشهور';
+ const base=p?p.name:T('project');
+ const title=monthKey?`${base} — ${ML(monthKey,true)}`:base;
+ const docType=monthKey?`${T('projectReport')} — ${ML(monthKey)}`:`${T('projectReport')} — ${T('allMonthsDoc')}`;
  printPreview(title,printDocHead(title,docType)+companyReportHtml(id,monthKey));
 }
 /* month picker shown before printing a project statement — lets the contractor choose one month
@@ -1056,10 +1087,10 @@ function printProjectPicker(id){
  wrap.addEventListener('mousedown',e=>{if(e.target===wrap)closeModal()});
  document.body.appendChild(wrap);
  _ppRedraw=()=>{
-  wrap.innerHTML=`<div class="sheet"><div class="head"><span>طباعة كشف ${esc(p?p.name:'المشروع')}</span><button class="x" onclick="closeModal()" title="إغلاق" aria-label="إغلاق">${ic.x(17)}</button></div><div class="body">
-   <div class="field"><label>الشهر</label>${monthBar('ppm',_ppMonth,'pickProjectPrintMonth')}${monthChips(logs,_ppMonth,'pickProjectPrintMonth')}</div>
-   <p class="muted" style="margin:0 0 14px">${_ppMonth?`سيُطبع شهر واحد فقط: <b>${monthLabel(_ppMonth)}</b>`:'سيُطبع كشف كامل بكل الشهور.'}</p>
-   <div class="actions"><button class="btn primary" id="ppGo">${ic.print(16)} طباعة</button><button class="btn secondary" onclick="closeModal()">إلغاء</button></div>
+  wrap.innerHTML=`<div class="sheet"><div class="head"><span>${T('printProjectSheet')} ${esc(p?p.name:T('project'))}</span><button class="x" onclick="closeModal()" title="${T('close')}" aria-label="${T('close')}">${ic.x(17)}</button></div><div class="body">
+   <div class="field"><label>${T('month')}</label>${monthBar('ppm',_ppMonth,'pickProjectPrintMonth')}${monthChips(logs,_ppMonth,'pickProjectPrintMonth')}</div>
+   <p class="muted" style="margin:0 0 14px">${_ppMonth?`${T('printingMonth')}: <b>${ML(_ppMonth)}</b>`:T('printingAll')}</p>
+   <div class="actions"><button class="btn primary" id="ppGo">${ic.print(16)} ${T('print')}</button><button class="btn secondary" onclick="closeModal()">${T('cancel')}</button></div>
   </div></div>`;
   $('#ppGo').onclick=()=>{const m=_ppMonth;closeModal();printProject(id,m)};
  };
@@ -1077,31 +1108,31 @@ function printWorkerFull(workerId,monthKey=''){
  const groups=groupByMonth([...allLogs].sort((a,b)=>a.date.localeCompare(b.date)),false)
   .filter(([k])=>!monthKey||k===monthKey);
  const blocks=groups.map(([k,ls])=>{
-  const rows=ls.map(l=>`<tr><td>${esc(l.date)}</td><td>${esc(l.projectId?projectName(l.projectId):'بدون مشروع')}</td><td>${esc(l.hours||0)}</td><td>${esc(l.type||'')}</td>${showMoney?`<td>${money(l.wage)}</td>`:''}</tr>`).join('');
+  const rows=ls.map(l=>`<tr><td>${esc(l.date)}</td><td>${esc(l.projectId?projectName(l.projectId):T('noProjectLabel'))}</td><td>${esc(l.hours||0)}</td><td>${esc(l.type||'')}</td>${showMoney?`<td>${money(l.wage)}</td>`:''}</tr>`).join('');
   const c=carryOver(allLogs,allPays,k);
-  const foot=`<tfoot><tr><td colspan="${showMoney?4:3}">إجمالي الشهر — <span class="num">${c.days}</span> يوم · <span class="num">${c.hours}</span> ساعة</td>${showMoney?`<td>${money(c.earned)}</td>`:''}</tr></tfoot>`;
+  const foot=`<tfoot><tr><td colspan="${showMoney?4:3}">${T('monthTotalLabel')} — <span class="num">${c.days}</span> ${T('logShort')} · <span class="num">${c.hours}</span> ${T('hourUnit')}</td>${showMoney?`<td>${money(c.earned)}</td>`:''}</tr></tfoot>`;
   const monthPays=[...allPays.filter(p=>ym(p.date)===k)].sort((a,b)=>a.date.localeCompare(b.date));
-  const paysTable=showMoney&&monthPays.length?`<table class="ptable"><thead><tr><th>تاريخ الدفعة</th><th>ملاحظات</th><th>المبلغ</th></tr></thead><tbody>${monthPays.map(p=>`<tr><td>${esc(p.date)}</td><td>${esc(p.note||'')}</td><td>${money(p.amount)}</td></tr>`).join('')}</tbody><tfoot><tr><td colspan="2">مدفوع في الشهر</td><td>${money(c.paid)}</td></tr></tfoot></table>`:'';
+  const paysTable=showMoney&&monthPays.length?`<table class="ptable"><thead><tr><th>${T('paymentDateLabel')}</th><th>${T('notes')}</th><th>${T('amountPlain')}</th></tr></thead><tbody>${monthPays.map(p=>`<tr><td>${esc(p.date)}</td><td>${esc(p.note||'')}</td><td>${money(p.amount)}</td></tr>`).join('')}</tbody><tfoot><tr><td colspan="2">${T('paidInMonth')}</td><td>${money(c.paid)}</td></tr></tfoot></table>`:'';
   const settle=showMoney?`<table class="month-sum"><tbody>
-   <tr><td>رصيد سابق (قبل هذا الشهر)</td><td>${money(c.prev)}</td></tr>
-   <tr><td>مستحق الشهر</td><td>${money(c.earned)}</td></tr>
-   <tr><td>مدفوع في الشهر</td><td>${money(c.paid)}</td></tr>
-   <tr class="final"><td>الرصيد الحالي</td><td>${money(c.balance)}</td></tr></tbody></table>`:'';
-  return `<div class="month-block"><div class="month-title">${monthLabel(k)}</div>
-   <table class="ptable"><thead><tr><th>التاريخ</th><th>المشروع</th><th>الساعات</th><th>نوع العمل</th>${showMoney?'<th>أجر العامل</th>':''}</tr></thead><tbody>${rows}</tbody>${foot}</table>
+   <tr><td>${T('prevBalance')}</td><td>${money(c.prev)}</td></tr>
+   <tr><td>${T('monthDue')}</td><td>${money(c.earned)}</td></tr>
+   <tr><td>${T('monthPaid')}</td><td>${money(c.paid)}</td></tr>
+   <tr class="final"><td>${T('currentBalance')}</td><td>${money(c.balance)}</td></tr></tbody></table>`:'';
+  return `<div class="month-block"><div class="month-title">${ML(k)}</div>
+   <table class="ptable"><thead><tr><th>${T('date')}</th><th>${T('project')}</th><th>${T('hours')}</th><th>${T('workType')}</th>${showMoney?`<th>${T('workerWage')}</th>`:''}</tr></thead><tbody>${rows}</tbody>${foot}</table>
    ${paysTable}${settle}${sigBlock()}</div>`;
- }).join('')||'<p>لا توجد يوميات</p>';
+ }).join('')||`<p>${T('noLogsDoc')}</p>`;
  /* the all-time figures only make sense on the full statement; a single-month payslip already
     ends with the running balance for that month */
  let summary='';
  if(showMoney&&!monthKey){
   const totalEarned=allLogs.reduce((a,l)=>a+Number(l.wage||0),0);
   const totalPaid=allPays.reduce((a,p)=>a+Number(p.amount||0),0);
-  summary=`<p><b>إجمالي المستحق:</b> ${money(totalEarned)} &nbsp; <b>المدفوع:</b> ${money(totalPaid)} &nbsp; <b>الرصيد:</b> ${money(totalEarned-totalPaid)}</p>`;
+  summary=`<p><b>${T('totalDueColon')}:</b> ${money(totalEarned)} &nbsp; <b>${T('paidColon')}:</b> ${money(totalPaid)} &nbsp; <b>${T('balanceColon')}:</b> ${money(totalEarned-totalPaid)}</p>`;
  }
- const extra=[can('private')&&w.idNumber?'هوية <span class="num">'+esc(w.idNumber)+'</span>':'',w.bankName?'بنك: '+esc(w.bankName):'',w.bankAccount?'حساب: <span class="num">'+esc(w.bankAccount)+'</span>':''].filter(Boolean).join(' • ');
- const title=monthKey?`${w.name} — ${monthLabel(monthKey,true)}`:w.name;
- const docType=monthKey?`كشف حساب عامل — ${monthLabel(monthKey)}`:'كشف حساب عامل — كل الشهور';
+ const extra=[can('private')&&w.idNumber?T('idLabelShort')+' <span class="num">'+esc(w.idNumber)+'</span>':'',w.bankName?T('bankShort')+': '+esc(w.bankName):'',w.bankAccount?T('accountShort')+': <span class="num">'+esc(w.bankAccount)+'</span>':''].filter(Boolean).join(' • ');
+ const title=monthKey?`${w.name} — ${ML(monthKey,true)}`:w.name;
+ const docType=monthKey?`${T('workerStatementDoc')} — ${ML(monthKey)}`:`${T('workerStatementDoc')} — ${T('allMonthsDoc')}`;
  printPreview(title,printDocHead(title,docType)+`<p class="muted">${esc(w.job||'')}${w.phone?' • '+esc(w.phone):''}${extra?' • '+extra:''}</p>${summary}${blocks}`);
 }
 
@@ -1114,14 +1145,14 @@ function logForm(l={},preWorker=''){
  const wageVal=l.wage??(startWorker?startWorker.defaultWage:'')??'';
  const profitVal=l.profit??(startWorker?startWorker.defaultProfit:0)??0;
  const billedVal=(Number(wageVal||0)+Number(profitVal||0))||'';
- return F('wi','العامل *',`<select id="wi" onchange="fillDefaultWage()"><option value="">اختر العامل</option>${opts}</select>`)
- +F('pi','المشروع *',`<select id="pi"><option value="">اختر المشروع</option>${propts}</select>`)
- +`<div class="row">${F('dt','التاريخ',`<input id="dt" type="date" value="${esc(l.date||today())}">`)}${F('hr','عدد الساعات',`<input id="hr" type="text" inputmode="decimal" oninput="digits(this)" value="${l.hours??8}">`)}</div>`
- +`<div class="row">${F('wg','أجرة العامل *',`<input id="wg" type="text" inputmode="decimal" oninput="digits(this);syncWage('wg')" value="${wageVal}">`)}${F('pf','ربحك اليومي',`<input id="pf" type="text" inputmode="decimal" oninput="digits(this);syncWage('pf')" value="${profitVal}">`)}</div>`
- +F('bl','المستحق من الشركة',`<input id="bl" type="text" inputmode="decimal" oninput="digits(this);syncWage('bl')" value="${billedVal}">`)
- +(l.id?'':F('pay','سلفة/دفعة اليوم',`<input id="pay" type="text" inputmode="decimal" oninput="digits(this)" value="0">`))
- +F('type','نوع العمل',`<input id="type" placeholder="سباكة، كهرباء، جبصين..." value="${esc(l.type||'')}">`)
- +F('note','ملاحظات',`<textarea id="note">${esc(l.note||'')}</textarea>`);
+ return F('wi',T('workerReq'),`<select id="wi" onchange="fillDefaultWage()"><option value="">${T('chooseWorker')}</option>${opts}</select>`)
+ +F('pi',T('projectReq'),`<select id="pi"><option value="">${T('chooseProject')}</option>${propts}</select>`)
+ +`<div class="row">${F('dt',T('date'),`<input id="dt" type="date" value="${esc(l.date||today())}">`)}${F('hr',T('hoursCount'),`<input id="hr" type="text" inputmode="decimal" oninput="digits(this)" value="${l.hours??8}">`)}</div>`
+ +`<div class="row">${F('wg',T('workerWageReq'),`<input id="wg" type="text" inputmode="decimal" oninput="digits(this);syncWage('wg')" value="${wageVal}">`)}${F('pf',T('dailyProfit'),`<input id="pf" type="text" inputmode="decimal" oninput="digits(this);syncWage('pf')" value="${profitVal}">`)}</div>`
+ +F('bl',T('dueFromCompanyField'),`<input id="bl" type="text" inputmode="decimal" oninput="digits(this);syncWage('bl')" value="${billedVal}">`)
+ +(l.id?'':F('pay',T('todayAdvance'),`<input id="pay" type="text" inputmode="decimal" oninput="digits(this)" value="0">`))
+ +F('type',T('workType'),`<input id="type" placeholder="${T('workTypePlaceholder')}" value="${esc(l.type||'')}">`)
+ +F('note',T('notes'),`<textarea id="note">${esc(l.note||'')}</textarea>`);
 }
 function syncWage(src){
  const wg=Number($('#wg').value||0),pf=Number($('#pf').value||0),bl=Number($('#bl').value||0);
@@ -1133,113 +1164,113 @@ function fillDefaultWage(){
  if(w){$('#wg').value=w.defaultWage||0;$('#pf').value=w.defaultProfit||0;syncWage('wg');}
 }
 function readLogForm(){
- const wid=$('#wi').value;if(!wid){fieldErr('wi','اختر العامل');return null}
- if(!$('#pi').value){fieldErr('pi','اختر المشروع أولاً - لا يمكن حفظ يومية بدون مشروع');return null}
+ const wid=$('#wi').value;if(!wid){fieldErr('wi',T('errChooseWorker'));return null}
+ if(!$('#pi').value){fieldErr('pi',T('errChooseProjectFirst'));return null}
  const worker=db.workers.find(w=>w.id===wid);const wage=Number($('#wg').value||worker.defaultWage||0);
- if(!wage){fieldErr('wg','اكتب الأجرة');return null}
+ if(!wage){fieldErr('wg',T('errWage'));return null}
  const profit=Number($('#pf').value||0);
  return {workerId:wid,projectId:$('#pi').value,date:$('#dt').value,hours:Number($('#hr').value||0),wage,profit,type:$('#type').value,note:$('#note').value};
 }
 function newLog(workerId=''){
- modal('تسجيل يومية جديدة',logForm({},workerId),()=>{
+ modal(T('newLogTitle'),logForm({},workerId),()=>{
   const v=readLogForm();if(!v)return false;
   const l={id:crypto.randomUUID(),...v};
   db.logs.push(l);window.api.addLog(l);
   const pay=Number($('#pay').value||0);
-  if(pay){const pm={id:crypto.randomUUID(),workerId:v.workerId,date:v.date,amount:pay,note:'سلفة من اليومية'};db.payments.push(pm);window.api.addPayment(pm);}
-  render();refreshWorkerSheet();toast('تم تسجيل اليومية');return true});
+  if(pay){const pm={id:crypto.randomUUID(),workerId:v.workerId,date:v.date,amount:pay,note:T('advanceFromLogNote')};db.payments.push(pm);window.api.addPayment(pm);}
+  render();refreshWorkerSheet();toast(T('toastLogAdded'));return true});
 }
 function editLog(id){
  const l=db.logs.find(x=>x.id===id);
- modal('تعديل يومية',logForm(l),()=>{
+ modal(T('editLogTitle'),logForm(l),()=>{
   const v=readLogForm();if(!v)return false;
-  Object.assign(l,v);window.api.updateLog(l);render();refreshWorkerSheet();toast('تم حفظ التعديل');return true});
+  Object.assign(l,v);window.api.updateLog(l);render();refreshWorkerSheet();toast(T('toastLogSaved'));return true});
 }
 function delLog(id){
  const l=db.logs.find(x=>x.id===id);
- confirmBox('حذف يومية',`حذف يومية <b>${esc(workerName(l.workerId))}</b> بتاريخ <span class="num">${esc(l.date)}</span> (${money(l.wage)})؟`,()=>{
+ confirmBox(T('confirmDeleteLog'),T('confirmDeleteLogBody').replace('{name}',`<b>${esc(workerName(l.workerId))}</b>`).replace('{date}',`<span class="num">${esc(l.date)}</span>`).replace('{amt}',money(l.wage)),()=>{
   db.logs=db.logs.filter(x=>x.id!==id);
   window.api.deleteLog(id);render();refreshWorkerSheet();
-  undoToast('تم حذف اليومية',()=>{db.logs.push(l);window.api.addLog(l);render();refreshWorkerSheet();toast('تم استرجاع اليومية');});
+  undoToast(T('toastLogDeleted'),()=>{db.logs.push(l);window.api.addLog(l);render();refreshWorkerSheet();toast(T('toastLogRestored'));});
  });
 }
 function deleteOrphanLogs(workerId){
  const orphans=db.logs.filter(l=>l.workerId===workerId&&(!l.projectId||!db.projects.some(p=>p.id===l.projectId)));
  if(!orphans.length)return;
- confirmBox('حذف يوميات بدون مشروع',`سيتم حذف <span class="num">${orphans.length}</span> يومية بدون مشروع محدد لهذا العامل نهائيًا.`,()=>{
+ confirmBox(T('confirmDeleteOrphans'),T('confirmDeleteOrphansBody').replace('{n}',`<span class="num">${orphans.length}</span>`),()=>{
   const ids=orphans.map(x=>x.id);
   db.logs=db.logs.filter(x=>!ids.includes(x.id));
   ids.forEach(id=>window.api.deleteLog(id));
   closeView();render();workerDetail(workerId);
-  undoToast('تم حذف اليوميات',()=>{orphans.forEach(l=>{db.logs.push(l);window.api.addLog(l)});closeView();render();workerDetail(workerId);toast('تم استرجاع اليوميات');});
+  undoToast(T('toastOrphansDeleted'),()=>{orphans.forEach(l=>{db.logs.push(l);window.api.addLog(l)});closeView();render();workerDetail(workerId);toast(T('toastOrphansRestored'));});
  });
 }
 
 /* ---------- payments CRUD ---------- */
 function paymentForm(p={}){
  const opts=db.workers.map(w=>`<option value="${w.id}" ${w.id===p.workerId?'selected':''}>${esc(w.name)}</option>`).join('');
- return F('wi','العامل *',`<select id="wi"><option value="">اختر العامل</option>${opts}</select>`)
- +`<div class="row">${F('am','المبلغ *',`<input id="am" type="text" inputmode="decimal" oninput="digits(this)" value="${p.amount??''}">`)}${F('dt','التاريخ',`<input id="dt" type="date" value="${esc(p.date||today())}">`)}</div>`
- +F('note','ملاحظات',`<input id="note" placeholder="سلفة، راتب، دفعة..." value="${esc(p.note||'')}">`);
+ return F('wi',T('workerReq'),`<select id="wi"><option value="">${T('chooseWorker')}</option>${opts}</select>`)
+ +`<div class="row">${F('am',T('amount'),`<input id="am" type="text" inputmode="decimal" oninput="digits(this)" value="${p.amount??''}">`)}${F('dt',T('date'),`<input id="dt" type="date" value="${esc(p.date||today())}">`)}</div>`
+ +F('note',T('notes'),`<input id="note" placeholder="${T('paymentNotePlaceholder')}" value="${esc(p.note||'')}">`);
 }
 function newPayment(workerId=''){
- modal('تسجيل دفعة / سلفة',paymentForm({workerId}),()=>{
-  if(!$('#wi').value)return fieldErr('wi','اختر العامل');
-  if(!Number($('#am').value))return fieldErr('am','اكتب المبلغ');
+ modal(T('newPaymentTitle'),paymentForm({workerId}),()=>{
+  if(!$('#wi').value)return fieldErr('wi',T('errChooseWorker'));
+  if(!Number($('#am').value))return fieldErr('am',T('errAmount'));
   const p={id:crypto.randomUUID(),workerId:$('#wi').value,amount:Number($('#am').value),date:$('#dt').value,note:$('#note').value};
-  db.payments.push(p);window.api.addPayment(p);render();refreshWorkerSheet();toast('تم تسجيل الدفعة');return true});
+  db.payments.push(p);window.api.addPayment(p);render();refreshWorkerSheet();toast(T('toastPaymentAdded'));return true});
 }
 function editPayment(id){
  const p=db.payments.find(x=>x.id===id);
- modal('تعديل دفعة',paymentForm(p),()=>{
-  if(!$('#wi').value)return fieldErr('wi','اختر العامل');
-  if(!Number($('#am').value))return fieldErr('am','اكتب المبلغ');
+ modal(T('editPaymentTitle'),paymentForm(p),()=>{
+  if(!$('#wi').value)return fieldErr('wi',T('errChooseWorker'));
+  if(!Number($('#am').value))return fieldErr('am',T('errAmount'));
   Object.assign(p,{workerId:$('#wi').value,amount:Number($('#am').value),date:$('#dt').value,note:$('#note').value});
-  window.api.updatePayment(p);render();refreshWorkerSheet();toast('تم حفظ التعديل');return true});
+  window.api.updatePayment(p);render();refreshWorkerSheet();toast(T('toastPaymentSaved'));return true});
 }
 function delPayment(id){
  const p=db.payments.find(x=>x.id===id);
- confirmBox('حذف دفعة',`حذف دفعة <b>${esc(workerName(p.workerId))}</b> بمبلغ ${money(p.amount)}؟`,()=>{
+ confirmBox(T('confirmDeletePayment'),T('confirmDeletePaymentBody').replace('{name}',`<b>${esc(workerName(p.workerId))}</b>`).replace('{amt}',money(p.amount)),()=>{
   db.payments=db.payments.filter(x=>x.id!==id);
   window.api.deletePayment(id);render();refreshWorkerSheet();
-  undoToast('تم حذف الدفعة',()=>{db.payments.push(p);window.api.addPayment(p);render();refreshWorkerSheet();toast('تم استرجاع الدفعة');});
+  undoToast(T('toastPaymentDeleted'),()=>{db.payments.push(p);window.api.addPayment(p);render();refreshWorkerSheet();toast(T('toastPaymentRestored'));});
  });
 }
 
 /* ---------- backup / reset ---------- */
-function exportData(){window.api.exportBackup().then(ok=>{if(ok)toast('تم تصدير النسخة الاحتياطية')})}
+function exportData(){window.api.exportBackup().then(ok=>{if(ok)toast(T('toastExported'))})}
 async function restoreData(){
- confirmBox('استعادة نسخة احتياطية','سيتم استبدال جميع البيانات الحالية بمحتوى الملف المختار.',async()=>{
+ confirmBox(T('confirmRestoreFile'),T('confirmRestoreFileBody'),async()=>{
   const data=await window.api.importBackup();
-  if(data){db=data;render();toast('تمت الاستعادة بنجاح')}
- },'متابعة');
+  if(data){db=data;render();toast(T('toastRestored'))}
+ },T('continueBtn'));
 }
 function resetData(){
- modal('حذف كل البيانات',
-  `<div style="display:flex;gap:12px;align-items:flex-start"><span class="tint-red" style="width:38px;height:38px;border-radius:11px;display:grid;place-items:center;flex:none">${ic.warn(19)}</span><p style="margin:6px 0 14px">سيتم حذف جميع العمال والمشاريع واليوميات والدفعات نهائيًا. لا يمكن التراجع.</p></div>`
-  +F('rc','اكتب "حذف" للتأكيد',`<input id="rc">`),
+ modal(T('confirmDeleteAllData'),
+  `<div style="display:flex;gap:12px;align-items:flex-start"><span class="tint-red" style="width:38px;height:38px;border-radius:11px;display:grid;place-items:center;flex:none">${ic.warn(19)}</span><p style="margin:6px 0 14px">${T('confirmDeleteAllDataBody')}</p></div>`
+  +F('rc',T('typeToConfirm'),`<input id="rc">`),
   ()=>{
-   if($('#rc').value.trim()!=='حذف')return fieldErr('rc','اكتب "حذف" بالضبط للتأكيد');
-   db={workers:[],projects:[],logs:[],payments:[],projectPayments:[],expenses:[]};window.api.resetAll();render();toast('تم حذف جميع البيانات');
+   if($('#rc').value.trim()!==T('typeToConfirmWord'))return fieldErr('rc',T('typeToConfirmErr'));
+   db={workers:[],projects:[],logs:[],payments:[],projectPayments:[],expenses:[]};window.api.resetAll();render();toast(T('toastAllDataDeleted'));
    return true;
-  },'حذف نهائي');
+  },T('confirmDeleteFinal'));
 }
 
 /* ---------- activation (device-locked license) ---------- */
 function activationScreen(machineId){
  const wrap=document.createElement('div');wrap.id='auth';
- wrap.innerHTML=`<div class="authbox"><div class="amark">${ic.lock(24)}</div><h2>تفعيل البرنامج</h2><p class="sub">هذا الترخيص مرتبط بجهاز واحد فقط. أرسل رمز الجهاز التالي للمطور للحصول على مفتاح التفعيل.</p>
-  <div class="field"><label>رمز الجهاز</label><div style="display:flex;gap:8px"><input id="mid" readonly value="${esc(machineId)}" style="flex:1"><button class="btn secondary" id="copyMid" type="button">نسخ</button></div></div>
-  ${F('lk','مفتاح التفعيل',`<input id="lk" placeholder="XXXX-XXXX-XXXX-XXXX-XXXX" style="text-align:center;letter-spacing:1px">`)}
-  <button class="btn primary wide" id="actGo">تفعيل</button>
-  <p class="muted" style="text-align:center;margin-top:12px">واتساب المطور: <span class="num" dir="ltr">+972 56 947 2423</span></p></div>`;
+ wrap.innerHTML=`<div class="authbox"><div class="amark">${ic.lock(24)}</div><h2>${T('activationTitle')}</h2><p class="sub">${T('activationHint')}</p>
+  <div class="field"><label>${T('deviceCode')}</label><div style="display:flex;gap:8px"><input id="mid" readonly value="${esc(machineId)}" style="flex:1"><button class="btn secondary" id="copyMid" type="button">${T('copyBtn')}</button></div></div>
+  ${F('lk',T('activationKey'),`<input id="lk" placeholder="XXXX-XXXX-XXXX-XXXX-XXXX" style="text-align:center;letter-spacing:1px">`)}
+  <button class="btn primary wide" id="actGo">${T('activateBtn')}</button>
+  <p class="muted" style="text-align:center;margin-top:12px">${T('devWhatsapp')}: <span class="num" dir="ltr">+972 56 947 2423</span></p></div>`;
  document.body.appendChild(wrap);
- $('#copyMid').onclick=()=>{navigator.clipboard.writeText(machineId);toast('تم نسخ رمز الجهاز');};
+ $('#copyMid').onclick=()=>{navigator.clipboard.writeText(machineId);toast(T('copyMidToast'));};
  const go=async()=>{
   const key=$('#lk').value.trim();
-  if(!key)return fieldErr('lk','اكتب مفتاح التفعيل');
+  if(!key)return fieldErr('lk',T('errActivationKey'));
   const ok=await window.api.activateLicense(key);
-  if(!ok)return fieldErr('lk','مفتاح غير صحيح لهذا الجهاز');
+  if(!ok)return fieldErr('lk',T('errActivationWrong'));
   wrap.remove();boot();
  };
  $('#actGo').onclick=go;
@@ -1249,6 +1280,12 @@ function activationScreen(machineId){
 
 /* ---------- boot ---------- */
 async function boot(){
+ /* language loads before anything else renders — the activation screen and login screen
+    must already be in the chosen language, not just the app after login */
+ LANG=(await window.api.getLang())==='he'?'he':'ar';
+ document.documentElement.lang=LANG;
+ $('#madeBy').textContent=T('madeBy');
+ $('#whatsappLbl').textContent=T('whatsapp');
  const lic=await window.api.licenseState();
  if(!lic.licensed){activationScreen(lic.machineId);return;}
  db=await window.api.getAll();
