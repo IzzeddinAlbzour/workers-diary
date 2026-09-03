@@ -71,7 +71,7 @@ main{padding:16px 14px 96px}
 .field input,.field select,.field textarea{width:100%;padding:12px;border:1.5px solid #d9e1ee;border-radius:11px;background:#fff;outline:none;transition:border-color .12s,box-shadow .12s}
 .field input:focus,.field select:focus,.field textarea:focus{border-color:var(--blue);box-shadow:0 0 0 3px rgba(18,101,220,.13)}
 .field textarea{min-height:76px;resize:vertical}
-.field.err input,.field.err select{border-color:var(--red);box-shadow:0 0 0 3px rgba(197,48,48,.11)}
+.field.err input,.field.err select,.field.err textarea{border-color:var(--red);box-shadow:0 0 0 3px rgba(197,48,48,.11)}
 .field .msg{display:none;color:var(--red);font-size:12.5px;font-weight:600;margin-top:5px}
 .field.err .msg{display:block}
 .row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
@@ -104,8 +104,12 @@ hr{border:0;border-top:1px solid var(--line);margin:12px 0}
 .empty p{margin:0 0 12px;font-size:13px}
 
 /* ---------- nav ---------- */
-nav{position:fixed;bottom:0;left:0;right:0;max-width:620px;margin:auto;background:rgba(255,255,255,.92);backdrop-filter:blur(10px);border-top:1px solid var(--line);display:grid;grid-template-columns:repeat(5,1fr);z-index:10;padding-bottom:env(safe-area-inset-bottom)}
-nav button{color:#77839a;padding:8px 2px 9px;font-size:11px;font-weight:600;display:flex;flex-direction:column;align-items:center;gap:3px;position:relative;transition:color .15s}
+/* flex + no-shrink instead of a fixed 5-column grid: an admin sees 8 tabs (home/workers/projects/
+   reports/archive/accounts/expenses/settings), which used to wrap onto a second row and get
+   silently covered by page content — now it scrolls horizontally in one row instead */
+nav{position:fixed;bottom:0;left:0;right:0;max-width:620px;margin:auto;background:rgba(255,255,255,.92);backdrop-filter:blur(10px);border-top:1px solid var(--line);display:flex;overflow-x:auto;scrollbar-width:none;z-index:10;padding-bottom:env(safe-area-inset-bottom)}
+nav::-webkit-scrollbar{display:none}
+nav button{flex:0 0 20%;min-width:64px;color:#77839a;padding:8px 2px 9px;font-size:11px;font-weight:600;display:flex;flex-direction:column;align-items:center;gap:3px;position:relative;transition:color .15s}
 nav button svg{transition:transform .18s var(--ease)}
 nav button.active{color:var(--blue);font-weight:800}
 nav button.active svg{transform:translateY(-1px)}
