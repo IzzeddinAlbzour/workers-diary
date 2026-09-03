@@ -70,14 +70,28 @@ page='reports';
 const main = () => document.querySelector('#main').innerHTML;
 
 // ---- every page still renders ----
-for (const p of ['home', 'workers', 'projects', 'reports', 'accounts', 'expenses']) {
+for (const p of ['home', 'workers', 'projects', 'reports', 'archive', 'accounts', 'expenses']) {
   run(`${p}()`);
   assert.ok(main().length > 100, `${p}() renders markup`);
 }
 
+// ---- archive: current month is called out separately, past months are listed and drill into
+// the same single-month report view (so they stay editable, never a bare read-only dump) ----
+run(`page='archive';archive()`);
+let out = main();
+assert.ok(out.includes('شهر 8 / 2026') && out.includes('شهر 7 / 2026') && out.includes('شهر 6 / 2026'), 'archive lists every month with data');
+assert.ok(out.includes(`onclick="openArchiveMonth('2026-07')"`), 'past months open into a single-month view');
+run(`openArchiveMonth('2026-07')`);
+assert.strictEqual(vm.runInContext('page', ctx), 'reports', 'opening an archived month switches to the reports page');
+out = main();
+assert.ok(out.includes('معروض شهر واحد فقط'), 'archived month opens already scoped to that month');
+assert.ok(!out.includes('class="mhead"'), 'no month banding once a single archived month is open');
+assert.ok(out.includes('2026-07-01') && !out.includes('2026-06-30') && !out.includes('2026-08-01'), 'only the archived month\'s own logs show');
+run(`_rWorker='';_rProject='';_rMonth='';_rFrom='';_rTo='';`);
+
 // ---- reports: all months -> one band per month, each with its own subtotal ----
 run('reports()');
-let out = main();
+out = main();
 for (const m of ['شهر 6 / 2026', 'شهر 7 / 2026', 'شهر 8 / 2026'])
   assert.ok(out.includes(m), `report bands include ${m}`);
 assert.strictEqual((out.match(/class="mhead"/g) || []).length, 3, 'three month header rows');

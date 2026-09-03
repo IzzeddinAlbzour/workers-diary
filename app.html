@@ -127,7 +127,7 @@ nav button.active::before{content:"";position:absolute;top:0;width:26px;height:3
 @keyframes toastin{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
 
 /* ---------- auth ---------- */
-#auth{position:fixed;inset:0;background:linear-gradient(160deg,var(--navy) 0%,var(--navy-2) 100%);z-index:50;display:grid;place-items:center;padding:20px}
+#auth,#activation{position:fixed;inset:0;background:linear-gradient(160deg,var(--navy) 0%,var(--navy-2) 100%);z-index:50;display:grid;place-items:center;padding:20px}
 .authbox{width:100%;max-width:400px;background:var(--bg);border-radius:20px;padding:26px;box-shadow:0 24px 60px rgba(0,0,0,.4);animation:sheetin .3s var(--ease)}
 .authbox .amark{width:52px;height:52px;background:#f7b500;border-radius:15px;display:grid;place-items:center;color:var(--navy);margin:0 auto 12px}
 .authbox h2{margin:0 0 4px;text-align:center;font-size:20px;font-weight:800}
@@ -304,11 +304,12 @@ const PAGES=[
  {id:'workers', titleKey:'navWorkers', icon:ic.users, ok:()=>true},
  {id:'projects', titleKey:'navProjects', icon:ic.crane, ok:()=>true},
  {id:'reports', titleKey:'navReports', icon:ic.chart, ok:()=>can('money')},
+ {id:'archive', titleKey:'navArchive', icon:ic.cal, ok:()=>can('money')},
  {id:'accounts', titleKey:'navAccounts', icon:ic.wallet, ok:()=>can('money')},
  {id:'expenses', titleKey:'navExpenses', icon:ic.pay, ok:()=>can('money')},
  {id:'settings', titleKey:'navSettings', icon:ic.gear, ok:()=>CU&&CU.isAdmin}
 ];
-const LABELS={home:'navHome',workers:'navWorkers',projects:'navProjects',reports:'navReports',accounts:'navAccounts',expenses:'navExpenses',settings:'navSettings'};
+const LABELS={home:'navHome',workers:'navWorkers',projects:'navProjects',reports:'navReports',archive:'navArchive',accounts:'navAccounts',expenses:'navExpenses',settings:'navSettings'};
 
 const KEY='workersDiary_v1';
 let db={workers:[],projects:[],logs:[],payments:[],projectPayments:[],expenses:[]};
@@ -419,7 +420,7 @@ function render(){
  $('#title').textContent=T(pg.titleKey);
  $('#subtitle').textContent=CU?`${T('userLabel')}: ${CU.name}`:T('appSubtitle');
  document.querySelectorAll('#nav button').forEach(b=>b.classList.toggle('active',b.dataset.page===page));
- ({home,workers,projects,reports,accounts,expenses,settings})[page]();
+ ({home,workers,projects,reports,archive,accounts,expenses,settings})[page]();
  const w=$('#pagewrap'); w.style.animation='none'; void w.offsetWidth; w.style.animation='';
 }
 
@@ -440,7 +441,8 @@ function home(){
   ${can('money')?`<div class="card stat"><span class="ic tint-purple">${ic.wallet(20)}</span><b>${money(s.balance)}</b><span class="lbl">${T('statBalance')}</span></div>`:''}
  </div>
  ${acts?`<div class="card"><h3>${T('quickActions')}</h3><div class="actions">${acts}</div></div>`:''}
- <div class="card"><h3>${T('recentLogs')}</h3>${recentLogs()}</div>`;
+ <div class="card"><h3>${T('recentLogs')}</h3>${recentLogs()}</div>
+ ${can('money')?`<div class="card"><button class="btn secondary wide" onclick="page='archive';render()">${ic.cal(16)} ${T('viewArchive')}</button></div>`:''}`;
 }
 function logRow(l,withActions){
  return `<div class="item"><div class="lead"><div class="tx"><h3>${esc(workerName(l.workerId))}</h3><small>${esc(projectName(l.projectId))} • <span class="num">${esc(l.date)}</span> • <span class="num">${esc(l.hours||0)}</span> ${T('hourUnit')}${l.type?' • '+esc(l.type):''}</small></div></div>
@@ -587,6 +589,35 @@ function printReportView(){
  const base=_rWorker?workerName(_rWorker):(_rProject?projectName(_rProject):T('generalReport'));
  const title=_rMonth?`${base} — ${ML(_rMonth,true)}`:base;
  printPreview(title,printDocHead(title,_rMonth?`${T('internalReport')} — ${ML(_rMonth)}`:T('internalReport'))+`<table class="ptable"><thead><tr><th>${T('date')}</th><th>${T('worker')}</th><th>${T('project')}</th><th>${T('hours')}</th><th>${T('workType')}</th><th>${T('workerWage')}</th><th>${T('yourProfit')}</th><th>${T('dueFromCompany')}</th></tr></thead><tbody>${rows}</tbody><tfoot><tr><td colspan="5">${T('grandTotal')}</td><td>${money(totalWage)}</td><td>${money(totalProfit)}</td><td>${money(totalWage+totalProfit)}</td></tr></tfoot></table>`);
+}
+/* ---------- archive: every month that isn't the current one, browsable and still fully editable
+   through the same reports()/workerDetail() screens — nothing is ever deleted, months just move
+   here automatically once the calendar rolls over, so old diaries stay separated from the live one. */
+function openArchiveMonth(k){
+ _rWorker='';_rProject='';
+ const r=monthRange(k);
+ _rMonth=k;_rFrom=r.from;_rTo=r.to;
+ page='reports';
+ render();
+}
+function archive(){
+ const curKey=ym(today());
+ const months=monthsOf([...db.logs,...db.payments]).filter(k=>k&&k!==curKey);
+ const monthCard=(k,isCurrent)=>{
+  const logs=db.logs.filter(l=>ym(l.date)===k);
+  const paid=db.payments.filter(p=>ym(p.date)===k).reduce((a,p)=>a+Number(p.amount||0),0);
+  const earned=logs.reduce((a,l)=>a+Number(l.wage||0),0);
+  const workerCount=new Set(logs.map(l=>l.workerId)).size;
+  return `<div class="card" style="cursor:pointer${isCurrent?';border:1px dashed var(--navy)':''}" onclick="openArchiveMonth('${k}')">
+   <div class="item" style="padding:0;border:0"><div class="tx"><h3>${ML(k)} ${isCurrent?`<span class="chip">${T('archiveCurrentMonth')}</span>`:''}</h3>
+   <small>${isCurrent?T('archiveCurrentHint'):`<span class="num">${workerCount}</span> ${T('statWorkers')} • <span class="num">${logs.length}</span> ${T('logShort')}`}</small></div></div>
+   ${can('money')&&logs.length?`<hr><div class="row"><div><span class="muted">${T('due')}</span><br><b style="color:var(--green)">${money(earned)}</b></div><div><span class="muted">${T('advancesPaid')}</span><br><b style="color:var(--orange)">${money(paid)}</b></div></div>`:''}
+  </div>`;
+ };
+ $('#main').innerHTML=`
+ <div class="card"><p class="muted" style="margin:0">${T('archiveHint')}</p></div>
+ ${monthCard(curKey,true)}
+ ${months.length?`<div class="card" style="background:transparent;box-shadow:none;padding:4px 2px"><small class="muted"><span class="num">${months.length}</span> ${T('archivedMonthsCount')}</small></div>${months.map(k=>monthCard(k,false)).join('')}`:`<div class="card">${emptyState(ic.cal,T('archiveEmptyTitle'),T('archiveEmptyHint'))}</div>`}`;
 }
 function accounts(){
  const s=stats();
@@ -1258,7 +1289,7 @@ function resetData(){
 
 /* ---------- activation (device-locked license) ---------- */
 function activationScreen(machineId){
- const wrap=document.createElement('div');wrap.id='auth';
+ const wrap=document.createElement('div');wrap.id='activation';
  wrap.innerHTML=`<div class="authbox"><div class="amark">${ic.lock(24)}</div><h2>${T('activationTitle')}</h2><p class="sub">${T('activationHint')}</p>
   <div class="field"><label>${T('deviceCode')}</label><div style="display:flex;gap:8px"><input id="mid" readonly value="${esc(machineId)}" style="flex:1"><button class="btn secondary" id="copyMid" type="button">${T('copyBtn')}</button></div></div>
   ${F('lk',T('activationKey'),`<input id="lk" placeholder="XXXX-XXXX-XXXX-XXXX-XXXX" style="text-align:center;letter-spacing:1px">`)}
