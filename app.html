@@ -722,19 +722,25 @@ async function settings(){
   </div>
   <p class="muted" style="margin:8px 0 0">${T('langHint')}</p></div>
  <div class="card"><h3>${T('autoBackup')}</h3>
-  ${F('bmode',T('backupWhen'),`<select id="bmode"><option value="quit" ${bs.mode==='quit'?'selected':''}>${T('onEveryClose')}</option><option value="daily" ${bs.mode==='daily'?'selected':''}>${T('daily')}</option><option value="weekly" ${bs.mode==='weekly'?'selected':''}>${T('weekly')}</option></select>`)}
-  ${F('bkeep',T('keptBackups'),`<input id="bkeep" type="text" inputmode="numeric" oninput="digits(this)" value="${bs.keep}">`)}
+  ${F('bmode',T('backupWhen'),`<select id="bmode"><option value="quit" ${(_bDraft?.mode??bs.mode)==='quit'?'selected':''}>${T('onEveryClose')}</option><option value="daily" ${(_bDraft?.mode??bs.mode)==='daily'?'selected':''}>${T('daily')}</option><option value="weekly" ${(_bDraft?.mode??bs.mode)==='weekly'?'selected':''}>${T('weekly')}</option></select>`)}
+  ${F('bkeep',T('keptBackups'),`<input id="bkeep" type="text" inputmode="numeric" oninput="digits(this)" value="${_bDraft?.keep??bs.keep}">`)}
   <div class="field"><label>${T('backupFolder')}</label><div class="item" style="padding:6px 0;border:0"><small class="num" dir="ltr" style="overflow:hidden;text-overflow:ellipsis">${esc(_pickedDir||bs.dir)}</small><button class="btn secondary" onclick="pickBackupDir()">${T('change')}</button></div>${_pickedDir?`<p class="muted" style="margin:2px 0 0">${T('newFolderHint')}</p>`:''}</div>
   <div class="actions"><button class="btn primary" onclick="saveBackupSettings()">${ic.check(16)} ${T('saveSettings')}</button><button class="btn success" onclick="backupNow()">${ic.down(16)} ${T('backupNow')}</button></div>
   <p class="muted" style="margin:10px 0 0">${T('lastBackup')}: ${bs.last?`<span class="num">${esc(bs.last.slice(0,16).replace('T',' '))}</span>`:T('none')}</p></div>
  <div class="card"><h3>${T('recentBackups')}</h3>${backups.length?backups.map(b=>`<div class="item"><small class="num" dir="ltr">${esc(b.file)}</small><button class="btn secondary" onclick="restoreFromFile('${esc(b.path).replace(/\\/g,'\\\\')}')">${T('restore')}</button></div>`).join(''):`<div class="empty">${T('noBackupsYet')}</div>`}</div>
  <div class="card"><button class="btn danger wide" onclick="logout()">${T('logout')}</button></div>`;
 }
-let _pickedDir=null;
-async function pickBackupDir(){const d=await window.api.pickBackupDir();if(d){_pickedDir=d;render()}}
+let _pickedDir=null,_bDraft=null;
+/* picking a folder forces a re-render to show the new path, which used to rebuild the mode/keep
+   fields from the last SAVED settings and silently drop whatever you'd just changed in them —
+   so snapshot the live form values into a draft before that render happens. */
+async function pickBackupDir(){
+ const d=await window.api.pickBackupDir();
+ if(d){_bDraft={mode:$('#bmode').value,keep:Number($('#bkeep').value)||30};_pickedDir=d;render()}
+}
 async function saveBackupSettings(){
  await window.api.setBackupSettings({mode:$('#bmode').value,keep:Number($('#bkeep').value)||30,dir:_pickedDir||undefined});
- _pickedDir=null;render();toast(T('toastBackupSettingsSaved'));
+ _pickedDir=null;_bDraft=null;render();toast(T('toastBackupSettingsSaved'));
 }
 async function backupNow(){const ok=await window.api.backupNow();toast(ok?T('toastBackupCreated'):T('toastNoDataToBackup'));render()}
 function restoreFromFile(p){
@@ -761,6 +767,7 @@ async function changeLang(l){
 function userForm(u={}){
  return F('un',T('username'),`<input id="un" value="${esc(u.name||'')}">`)
  +F('up',u.id?T('passwordKeep'):T('passwordSet'),`<input id="up" type="password">`)
+ +F('up2',T('confirmPassword'),`<input id="up2" type="password">`)
  +`<div class="field"><label>${T('permsLabel')}</label>
    <div class="permrow"><input type="checkbox" id="uadmin" ${u.isAdmin?'checked':''} onchange="document.getElementById('permlist').style.opacity=this.checked?.4:1"> <b>${T('adminPerm')}</b></div>
    <div id="permlist" style="opacity:${u.isAdmin?.4:1}">${PERMS().map(([k,l])=>`<div class="permrow"><input type="checkbox" id="perm-${k}" ${u.perms&&u.perms[k]?'checked':''}> ${l}</div>`).join('')}</div></div>`;
@@ -770,6 +777,7 @@ function readUserForm(existing){
  if(!name)return fieldErr('un',T('errUsername')),null;
  const pass=$('#up').value;
  if(!existing&&!pass)return fieldErr('up',T('errPassword')),null;
+ if(pass&&pass!==$('#up2').value)return fieldErr('up2',T('errPasswordMismatch')),null;
  const perms={};PERMS().forEach(([k])=>perms[k]=$('#perm-'+k).checked);
  return {name,pass:pass||undefined,isAdmin:$('#uadmin').checked,perms};
 }
@@ -981,10 +989,14 @@ function newWorker(){
 function editWorker(id){
  const w=db.workers.find(x=>x.id===id);
  _photos={idPhoto:w.idPhoto||'',permitPhoto:w.permitPhoto||''};
+ const origPhotos={..._photos};
  modal(T('editWorkerTitle'),workerForm(w),()=>{
   if(!$('#n').value.trim())return fieldErr('n',T('errWorkerName'));
   Object.assign(w,{name:$('#n').value.trim(),phone:$('#p').value,job:$('#j').value,defaultWage:Number($('#w').value||0),defaultProfit:Number($('#wp').value||0)},readWorkerExtra());
-  window.api.updateWorker(w);render();toast(T('toastWorkerSaved'));return true});
+  window.api.updateWorker(w);
+  /* only delete the OLD file, and only once the swap is actually committed — never on cancel */
+  for(const k of ['idPhoto','permitPhoto'])if(origPhotos[k]&&origPhotos[k]!==_photos[k])window.api.deletePhoto(origPhotos[k]);
+  render();toast(T('toastWorkerSaved'));return true});
  renderPhotoBox('idPhoto');renderPhotoBox('permitPhoto');
 }
 function delWorker(id){

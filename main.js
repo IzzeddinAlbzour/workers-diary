@@ -195,6 +195,7 @@ app.whenReady().then(() => {
   });
   ipcMain.handle('photoUrl', (e, name) => name && fs.existsSync(photoFile(name)) ? photoUrl(name) : null);
   ipcMain.handle('openPhoto', (e, name) => { if (name && fs.existsSync(photoFile(name))) shell.openPath(photoFile(name)); });
+  ipcMain.handle('deletePhoto', (e, name) => { try { if (name) fs.rmSync(photoFile(name)); } catch {} });
   ipcMain.handle('resetAll', () => db.resetAll());
   ipcMain.handle('importAll', (e, data) => db.importAll(data));
 
@@ -280,5 +281,5 @@ app.whenReady().then(() => {
   app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
 });
 
-app.on('before-quit', writeAutoBackup);
+app.on('before-quit', () => writeAutoBackup());
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });

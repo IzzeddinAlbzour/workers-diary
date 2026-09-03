@@ -194,6 +194,15 @@ out = main();
 assert.ok(out.includes('بنزين') && !out.includes('أدوات'), 'only the picked month\'s expenses');
 assert.ok(out.includes('على أخيك تحويل'), 'settlement recomputed for that month alone');
 
+// ---- admin-created users need matching confirm-password, same as the self-setup screen ----
+run(`document.querySelector('#un').value='newguy';document.querySelector('#up').value='secret1';document.querySelector('#up2').value='secret2';`);
+assert.strictEqual(run(`readUserForm(false)`), null, 'mismatched confirm password blocks user creation');
+run(`document.querySelector('#up2').value='secret1';`);
+assert.deepStrictEqual(
+  { name: run(`readUserForm(false)`).name, pass: run(`document.querySelector('#up').value`) },
+  { name: 'newguy', pass: 'secret1' },
+  'matching confirm password lets the form through');
+
 // ---- Hebrew mode: every page still renders, chrome is actually Hebrew, numbers use Latin digits ----
 run(`LANG='he';document.documentElement.lang='he';`);
 for (const p of ['home', 'workers', 'projects', 'reports', 'accounts', 'expenses']) {

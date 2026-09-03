@@ -27,6 +27,7 @@ contextBridge.exposeInMainWorld('api', {
   pickPhoto: call('pickPhoto'),
   photoUrl: call('photoUrl'),
   openPhoto: call('openPhoto'),
+  deletePhoto: call('deletePhoto'),
   resetAll: call('resetAll'),
   importAll: call('importAll'),
   exportBackup: call('exportBackup'),
