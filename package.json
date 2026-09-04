@@ -1,7 +1,7 @@
 {
   "name": "workers-diary",
   "productName": "يوميات العمال",
-  "version": "1.9.0",
+  "version": "1.10.0",
   "description": "إدارة العمال والمشاريع والحسابات",
   "main": "main.js",
   "author": "Ezz Al-Bzour",
