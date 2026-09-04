@@ -227,4 +227,50 @@ assert.ok(/1,?234/.test(hebrewMoneySample), 'Hebrew money renders the Latin digi
 // switch back so nothing downstream in a future edit accidentally depends on Hebrew being sticky
 run(`LANG='ar';document.documentElement.lang='ar';`);
 
+// ---- month-separation system: workers/projects/home never sum across months by default ----
+// the fixture above is pinned to 2026-06/07/08 so it can never exercise "current month" scoping
+// (real today() is whatever the machine clock says) — add one log+payment dated *today* on top
+// of it and prove the current-month-scoped views count only that one, while the identity-only
+// project roster still lists every month the project ever had.
+run(`
+db.logs.push({id:'lNow',workerId:'w1',projectId:'p1',date:today(),hours:5,wage:250,profit:999,type:'اليوم',note:''});
+db.payments.push({id:'yNow',workerId:'w1',date:today(),amount:60,note:'اليوم'});
+`);
+
+// monthStats(): the current month is only today's log+payment, not the whole fixture
+const ms = run('monthStats()');
+assert.strictEqual(ms.earned, 250, 'monthStats() counts only the current-month log');
+assert.strictEqual(ms.paid, 60, 'monthStats() counts only the current-month payment');
+// stats() (accounts page, labeled "إجمالي") stays all-time and must NOT be affected
+const allTime = run('stats()');
+assert.strictEqual(allTime.earned, 250 + 300 + 400 + 400 + 450, 'stats() still sums every month, unaffected by month scoping');
+
+// workers list card: shows this-month's 250, never the all-time 1800
+// (workers()/projects() render their lists into a separate #workerList/#projectList node that
+// main() does not include — the stub DOM has no real parent/child relationship between them)
+run(`page='workers';workers()`);
+const workerListHtml = run(`document.querySelector('#workerList').innerHTML`);
+const money250 = run(`money(250)`), money1800 = run(`money(1800)`);
+assert.ok(workerListHtml.includes(money250), 'worker card shows the current-month figure');
+assert.ok(!workerListHtml.includes(money1800), 'worker card does not fold in older months (no all-time sum)');
+
+// worker profile: a 4th collapsible month section appears for today, newest still on top
+run(`workerDetail('w1')`);
+sheet = lastCreated.innerHTML;
+assert.strictEqual((sheet.match(/class="msec"/g) || []).length, 4, 'a 4th month section appears for today\'s log');
+assert.ok(sheet.indexOf(`printWorkerFull('w1','${run('currentMonthKey()')}')`) < sheet.indexOf(`printWorkerFull('w1','2026-08')`), 'today\'s month section renders before august');
+
+// project roster chip is an all-time identity list (count=3: june+july+today), never scoped to the
+// current month alone — this is the exact regression the chip fix in filterProjects() guards against
+run(`page='projects';projects()`);
+const projectListHtml = run(`document.querySelector('#projectList').innerHTML`);
+assert.ok(projectListHtml.includes(`${run(`esc(workerName('w1'))`)} · <span class="num">3</span>`), 'project roster chip counts every month the worker appears in, not just this month');
+
+// project detail: today's log shows in the current-month block, not buried under an old month
+run(`projectDetail('p1')`);
+sheet = lastCreated.innerHTML;
+assert.ok(sheet.indexOf(run(`esc(workerName('w1'))`)) < sheet.indexOf('شهر 7 / 2026'), 'today\'s log appears in the current-month block, ahead of the collapsed july section');
+
+run(`db.logs=db.logs.filter(l=>l.id!=='lNow');db.payments=db.payments.filter(p=>p.id!=='yNow');`);
+
 console.log('ALL RENDER TESTS PASSED');

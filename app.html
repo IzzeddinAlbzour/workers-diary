@@ -156,6 +156,10 @@ nav button.active::before{content:"";position:absolute;top:0;width:26px;height:3
 .chip{display:inline-block;background:var(--blue-soft);color:var(--blue);border-radius:20px;padding:3px 10px;font-size:12px;font-weight:700;margin:2px 0 2px 4px}
 .row3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px}
 
+/* ---------- month-scope tag: marks a figure as "this month only", not a totals dump ---------- */
+.month-tag{display:inline-flex;align-items:center;gap:4px;background:var(--bg);color:var(--ink-3);font-size:11.5px;font-weight:700;padding:4px 10px 4px 8px;border-radius:20px}
+.month-tag svg{flex:none;opacity:.75}
+
 /* ---------- desktop (MacBook) layout: sidebar nav ---------- */
 @media(min-width:900px){
  .app{max-width:none;padding-right:236px}
@@ -219,7 +223,10 @@ nav button.active::before{content:"";position:absolute;top:0;width:26px;height:3
 .sigline{border-top:1px solid var(--ink);padding-top:6px;font-size:12px;color:var(--ink-2);font-weight:600;text-align:center}
 
 /* ---------- print preview: document-viewer chrome, scoped to #printpreview so other modals are untouched ---------- */
-#printpreview{background:rgba(15,22,36,.78)}
+/* backdrop needs to fully obscure the page behind it — the page can be showing wages/balances,
+   and a light card background ghosting through a merely-tinted dark overlay reads as sloppy AND
+   briefly shows numbers that don't belong in the print preview's own content */
+#printpreview{background:rgba(10,16,28,.9)}
 #printpreview .sheet{max-width:820px;background:transparent;box-shadow:none;border-radius:0;overflow:visible}
 #printpreview .head{background:transparent;color:#e7ecf5;padding:0 2px 12px;font-size:13.5px;font-weight:700}
 #printpreview .head .x{color:#c7d0e0}
@@ -324,6 +331,7 @@ let _rMonth=''; // '' = all months (report list groups by month); "YYYY-MM" = on
 let _eFrom='',_eTo='';
 let _eMonth='';
 let _openWorker=null; // workerId whose full-profile viewSheet is currently open, for live refresh after edits
+let _openProject=null; // projectId whose detail viewSheet is currently open, for live refresh after edits
 let CU=null; // current user {id,name,isAdmin,perms}
 let LANG='ar'; // 'ar' | 'he' — one shared app-wide setting, loaded before boot() renders anything
 const T=k=>t(k,LANG);
@@ -334,7 +342,12 @@ const PERMS=()=>PERM_KEYS.map(([k,tk])=>[k,T(tk)]);
 const $=s=>document.querySelector(s);
 /* Hebrew UI uses Latin digits (he-IL); Arabic keeps its Arabic-Indic digits (ar-EG) */
 const money=n=>`<span class="num">${Number(n||0).toLocaleString(LANG==='he'?'he-IL':'ar-EG',{maximumFractionDigits:2})} ₪</span>`;
-const today=()=>new Date().toISOString().slice(0,10);
+/* local calendar date, not UTC — toISOString() rolls to the previous day for any
+   timezone ahead of UTC during the first hours after local midnight, which used to
+   misfile logs entered right after midnight into the previous day/month. */
+const today=()=>{const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`};
+/* single source of truth for "which month is live" — every current-month scoped view reads this */
+const currentMonthKey=()=>ym(today());
 function esc(s){return String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))}
 /* accept Arabic-Indic digits (٠١٢٣ / ۰۱۲۳) and normalize to Latin so Number() works */
 function digits(el){
@@ -346,6 +359,10 @@ function projectName(id){return db.projects.find(x=>x.id==id)?.name||T('notSet')
 /* ---------- month filtering (ym/monthLabel/monthRange/stepMonth/groupByMonth/carryOver come from month.js) ----------
    The month picker is a shortcut over the from/to filter that already exists: picking a month writes its
    first and last day into _rFrom/_rTo, so there stays exactly one filter path instead of two that can disagree. */
+/* quick-add forms (log/payment/project payment) only ever write into the live month — backdating
+   into an archived month happens from the archive screen instead, where it's an explicit edit, not
+   an easy-to-miss default. min/max on the date input enforces that at entry time. */
+const curMonthDateAttrs=()=>{const r=monthRange(currentMonthKey());return `min="${r.from}" max="${r.to}"`};
 function monthBar(id,value,setter){
  const step=(n,label,icon)=>`<button class="step" title="${label}" aria-label="${label}" ${value?'':'disabled'} onclick="${setter}('${value?stepMonth(value,n):''}')">${icon(16)}</button>`;
  return `<div class="monthbar">${step(-1,T('prevMonth'),ic.chevR)}<input id="${id}" type="month" value="${value}" onchange="${setter}(this.value)">${step(1,T('nextMonth'),ic.chevL)}</div>`;
@@ -369,12 +386,24 @@ function setExpenseMonth(k){
  _eFrom=r.from;_eTo=r.to;
  expenses();
 }
+/* all-time totals — correct on purpose for the "الحسابات" partner-accounting page, which is
+   explicitly labeled "إجمالي" (grand total). The home dashboard uses monthStats() instead so its
+   headline balance doesn't silently net an old paid-off month against a new unpaid one. */
 function stats(){
  const earned=db.logs.reduce((a,l)=>a+Number(l.wage||0),0);
  const profit=db.logs.reduce((a,l)=>a+Number(l.profit||0),0);
  const billed=earned+profit;
  const paid=db.payments.reduce((a,p)=>a+Number(p.amount||0),0);
  return {workers:db.workers.length,projects:db.projects.length,days:db.logs.length,earned,profit,billed,paid,balance:earned-paid};
+}
+/* same shape as stats(), scoped to the current month only — for views that must not sum across months */
+function monthStats(){
+ const cm=currentMonthKey();
+ const logs=db.logs.filter(l=>ym(l.date)===cm), pays=db.payments.filter(p=>ym(p.date)===cm);
+ const earned=logs.reduce((a,l)=>a+Number(l.wage||0),0);
+ const profit=logs.reduce((a,l)=>a+Number(l.profit||0),0);
+ const paid=pays.reduce((a,p)=>a+Number(p.amount||0),0);
+ return {earned,profit,billed:earned+profit,paid,balance:earned-paid,days:logs.length};
 }
 function toast(msg){
  $('#toast').innerHTML=`<div class="t">${ic.check(16)} ${esc(msg)}</div>`;
@@ -431,6 +460,7 @@ function render(){
 /* ---------- pages ---------- */
 function home(){
  const s=stats();
+ const ms=monthStats();
  const acts=[
   can('logs')?`<button class="btn primary" onclick="newLog()">${ic.plus(17)} ${T('logToday')}</button>`:'',
   can('manage')?`<button class="btn secondary" onclick="newWorker()">${ic.users(17)} ${T('addWorker')}</button>`:'',
@@ -442,7 +472,7 @@ function home(){
   <div class="card stat"><span class="ic tint-blue">${ic.users(20)}</span><b class="num">${s.workers}</b><span class="lbl">${T('statWorkers')}</span></div>
   <div class="card stat"><span class="ic tint-green">${ic.cal(20)}</span><b class="num">${db.logs.filter(x=>x.date===today()).length}</b><span class="lbl">${T('statToday')}</span></div>
   <div class="card stat"><span class="ic tint-orange">${ic.crane(20)}</span><b class="num">${s.projects}</b><span class="lbl">${T('statProjects')}</span></div>
-  ${can('money')?`<div class="card stat"><span class="ic tint-purple">${ic.wallet(20)}</span><b>${money(s.balance)}</b><span class="lbl">${T('statBalance')}</span></div>`:''}
+  ${can('money')?`<div class="card stat"><span class="ic tint-purple">${ic.wallet(20)}</span><b>${money(ms.balance)}</b><span class="lbl">${T('statBalance')}</span><span class="month-tag">${ic.cal(12)}${ML(currentMonthKey(),true)}</span></div>`:''}
  </div>
  ${acts?`<div class="card"><h3>${T('quickActions')}</h3><div class="actions">${acts}</div></div>`:''}
  <div class="card"><h3>${T('recentLogs')}</h3>${recentLogs()}</div>
@@ -468,8 +498,9 @@ function workers(){
 }
 function filterWorkers(){
  const q=($('#ws')?.value||'').toLowerCase();
+ const cm=currentMonthKey();
  let list=db.workers.filter(w=>w.name.toLowerCase().includes(q)||String(w.phone||'').includes(q))
-  .map(w=>({w,earned:db.logs.filter(l=>l.workerId===w.id).reduce((a,l)=>a+Number(l.wage||0),0),paid:db.payments.filter(p=>p.workerId===w.id).reduce((a,p)=>a+Number(p.amount||0),0)}));
+  .map(w=>({w,earned:db.logs.filter(l=>l.workerId===w.id&&ym(l.date)===cm).reduce((a,l)=>a+Number(l.wage||0),0),paid:db.payments.filter(p=>p.workerId===w.id&&ym(p.date)===cm).reduce((a,p)=>a+Number(p.amount||0),0)}));
  if(_wsort==='name')list.sort((a,b)=>a.w.name.localeCompare(b.w.name,'ar'));
  else if(_wsort==='balance')list.sort((a,b)=>(b.earned-b.paid)-(a.earned-a.paid));
  $('#workerList').innerHTML=list.length?list.map(({w,earned,paid})=>{
@@ -478,7 +509,7 @@ function filterWorkers(){
     <button class="iconbtn" title="${T('edit')}" onclick="event.stopPropagation();editWorker('${w.id}')">${ic.edit(16)}</button>
     <button class="iconbtn del" title="${T('delete')}" onclick="event.stopPropagation();delWorker('${w.id}')">${ic.trash(16)}</button>`:''}
    </div></div>
-   ${can('money')?`<div class="row"><div><span class="muted">${T('due')}</span><br><b style="color:var(--green)">${money(earned)}</b></div><div><span class="muted">${T('advancesPaid')}</span><br><b style="color:var(--orange)">${money(paid)}</b></div></div><hr>`:''}
+   ${can('money')?`<div style="margin:10px 0 8px"><span class="month-tag">${ic.cal(12)}${ML(currentMonthKey(),true)}</span></div><div class="row"><div><span class="muted">${T('due')}</span><br><b style="color:var(--green)">${money(earned)}</b></div><div><span class="muted">${T('advancesPaid')}</span><br><b style="color:var(--orange)">${money(paid)}</b></div></div><hr>`:''}
    <div class="item" style="padding:0;border:0">${can('money')?`<b>${T('balance')}: ${money(earned-paid)}</b>`:'<span></span>'}${can('logs')?`<button class="btn secondary" onclick="event.stopPropagation();newLog('${w.id}')">${ic.plus(15)} ${T('addLog')}</button>`:''}</div></div>`
  }).join(''):(db.workers.length
    ?`<div class="card">${emptyState(ic.search,T('noResultsTitle'),T('noResultsHintName'))}</div>`
@@ -495,31 +526,36 @@ function projects(){
 }
 function filterProjects(){
  const q=($('#ps')?.value||'').toLowerCase();
+ const cm=currentMonthKey();
  let list=db.projects.filter(p=>(_showDone||!p.done)&&(p.name.toLowerCase().includes(q)||String(p.location||'').toLowerCase().includes(q)))
   .map(p=>{
-   const logs=db.logs.filter(l=>l.projectId===p.id), total=logs.reduce((a,l)=>a+Number(l.wage||0),0);
-   const pays=db.projectPayments.filter(x=>x.projectId===p.id);
-   return {p,logs,total,pays,received:pays.reduce((a,x)=>a+Number(x.amount||0),0)};
+   const allLogs=db.logs.filter(l=>l.projectId===p.id);
+   const logs=allLogs.filter(l=>ym(l.date)===cm), total=logs.reduce((a,l)=>a+Number(l.wage||0),0);
+   const pays=db.projectPayments.filter(x=>x.projectId===p.id&&ym(x.date)===cm);
+   return {p,logs,allLogs,total,pays,received:pays.reduce((a,x)=>a+Number(x.amount||0),0)};
   });
  if(_psort==='name')list.sort((a,b)=>a.p.name.localeCompare(b.p.name,'ar'));
  else if(_psort==='total')list.sort((a,b)=>b.total-a.total);
- $('#projectList').innerHTML=list.length?list.map(({p,logs,total,pays,received})=>{
-  const byW={}; logs.forEach(l=>{byW[l.workerId]=(byW[l.workerId]||0)+1});
+ $('#projectList').innerHTML=list.length?list.map(({p,logs,allLogs,total,pays,received})=>{
+  /* the worker roster is who ever worked here — an identity list, not a money sum, so it stays
+     all-time; scoping it to the current month would make an older project look workerless */
+  const byW={}; allLogs.forEach(l=>{byW[l.workerId]=(byW[l.workerId]||0)+1});
   const chips=Object.entries(byW).map(([wid,n])=>`<span class="chip" style="cursor:pointer" onclick="workerDetail('${wid}','${p.id}')">${esc(workerName(wid))} · <span class="num">${n}</span></span>`).join('');
   const payRows=can('projPay')?pays.slice(-3).reverse().map(x=>`<div class="item"><div class="tx"><small><span class="num">${esc(x.date)}</span> • ${esc(x.note||T('payment'))}</small></div>
    <div class="rowicons"><b style="color:var(--green)">${money(x.amount)}</b>${can('editDelete')?`
     <button class="iconbtn" title="${T('edit')}" onclick="editProjectPayment('${x.id}')">${ic.edit(16)}</button>
     <button class="iconbtn del" title="${T('delete')}" onclick="delProjectPayment('${x.id}')">${ic.trash(16)}</button>`:''}
    </div></div>`).join(''):'';
-  return `<div class="card" style="${p.done?'opacity:.65':''}"><div class="item" style="padding-top:0"><div class="lead"><span class="avatar tint-orange">${ic.crane(19)}</span><div class="tx"><h3>${esc(p.name)} ${p.done?`<span class="chip" style="background:var(--bg);color:var(--ink-3)">${T('finished')}</span>`:''}</h3><small>${esc(p.location||'')}${p.start?' • <span class="num">'+esc(p.start)+'</span>':''}</small></div></div>
+  return `<div class="card" style="${p.done?'opacity:.65;':''}cursor:pointer" onclick="projectDetail('${p.id}')"><div class="item" style="padding-top:0"><div class="lead"><span class="avatar tint-orange">${ic.crane(19)}</span><div class="tx"><h3>${esc(p.name)} ${p.done?`<span class="chip" style="background:var(--bg);color:var(--ink-3)">${T('finished')}</span>`:''}</h3><small>${esc(p.location||'')}${p.start?' • <span class="num">'+esc(p.start)+'</span>':''}</small></div></div>
    <div class="rowicons">${can('manage')?`
-    <button class="iconbtn" title="${p.done?T('reactivate'):T('finishProject')}" onclick="toggleProjectDone('${p.id}')">${p.done?ic.up(16):ic.check(16)}</button>
-    <button class="iconbtn" title="${T('edit')}" onclick="editProject('${p.id}')">${ic.edit(16)}</button>
-    <button class="iconbtn del" title="${T('delete')}" onclick="delProject('${p.id}')">${ic.trash(16)}</button>`:''}
+    <button class="iconbtn" title="${p.done?T('reactivate'):T('finishProject')}" onclick="event.stopPropagation();toggleProjectDone('${p.id}')">${p.done?ic.up(16):ic.check(16)}</button>
+    <button class="iconbtn" title="${T('edit')}" onclick="event.stopPropagation();editProject('${p.id}')">${ic.edit(16)}</button>
+    <button class="iconbtn del" title="${T('delete')}" onclick="event.stopPropagation();delProject('${p.id}')">${ic.trash(16)}</button>`:''}
    </div></div>
+   <div style="margin:10px 0 8px"><span class="month-tag">${ic.cal(12)}${ML(cm,true)}</span></div>
    <div class="row3"><div><span class="muted">${T('logsCount')}</span><br><b class="num">${logs.length}</b></div>${can('money')?`<div><span class="muted">${T('wagesLogged')}</span><br><b>${money(total)}</b></div>`:'<div></div>'}${can('projPay')?`<div><span class="muted">${T('paymentsReceived')}</span><br><b style="color:var(--green)">${money(received)}</b></div>`:'<div></div>'}</div>
-   ${chips?`<hr><span class="muted">${T('workersInProject')}</span><div style="margin-top:5px">${chips}</div>`:''}
-   ${can('projPay')?`<hr>${payRows||''}<div class="actions" style="margin-top:${payRows?'10px':'0'}"><button class="btn success" onclick="newProjectPayment('${p.id}')">${ic.plus(15)} ${T('receivedPayment')}</button><button class="btn secondary" onclick="printProjectPicker('${p.id}')">${ic.print(15)} ${T('printContractorSheet')}</button></div>`:''}</div>`;
+   ${chips?`<hr><span class="muted">${T('workersInProject')}</span><div style="margin-top:5px" onclick="event.stopPropagation()">${chips}</div>`:''}
+   ${can('projPay')?`<hr>${payRows||''}<div class="actions" style="margin-top:${payRows?'10px':'0'}" onclick="event.stopPropagation()"><button class="btn success" onclick="newProjectPayment('${p.id}')">${ic.plus(15)} ${T('receivedPayment')}</button><button class="btn secondary" onclick="printProjectPicker('${p.id}')">${ic.print(15)} ${T('printContractorSheet')}</button></div>`:''}</div>`;
  }).join(''):(db.projects.length
    ?`<div class="card">${emptyState(ic.search,T('noResultsTitle'),T('noResultsHintPlace'))}</div>`
    :`<div class="card">${emptyState(ic.crane,T('noProjectsTitle'),T('noProjectsHint'),`<button class="btn primary" onclick="newProject()">${ic.plus(16)} ${T('addProject')}</button>`)}</div>`);
@@ -605,7 +641,7 @@ function openArchiveMonth(k){
  render();
 }
 function archive(){
- const curKey=ym(today());
+ const curKey=currentMonthKey();
  const months=monthsOf([...db.logs,...db.payments]).filter(k=>k&&k!==curKey);
  const monthCard=(k,isCurrent)=>{
   const logs=db.logs.filter(l=>ym(l.date)===k);
@@ -874,6 +910,10 @@ function modal(title,body,onSave,saveLabel=T('save')){
  const wrap=document.createElement('div');wrap.id='modal';wrap.className='overlay';
  wrap.innerHTML=`<div class="sheet"><div class="head"><span>${title}</span><button class="x" onclick="closeModal()" title="${T('close')}" aria-label="${T('close')}">${ic.x(17)}</button></div><div class="body">${body}<div class="actions" style="margin-top:14px"><button class="btn primary" id="saveBtn">${saveLabel}</button><button class="btn secondary" onclick="closeModal()">${T('cancel')}</button></div></div></div>`;
  wrap.addEventListener('mousedown',e=>{if(e.target===wrap)closeModal()});
+ /* Enter saves from any single-line field — this app is mostly daily log/payment entry, so
+    reaching for the mouse on every save adds up. A textarea (notes) still needs Enter for
+    newlines, so it's excluded. */
+ wrap.addEventListener('keydown',e=>{if(e.key==='Enter'&&e.target.tagName!=='TEXTAREA'){e.preventDefault();$('#saveBtn').click()}});
  document.body.appendChild(wrap);
  $('#saveBtn').onclick=()=>{if(onSave())closeModal()};
  const f=wrap.querySelector('input,select,textarea'); if(f)f.focus();
@@ -903,11 +943,12 @@ function viewSheet(title,body){
  wrap.addEventListener('mousedown',e=>{if(e.target===wrap)closeView()});
  document.body.appendChild(wrap);
 }
-function closeView(){$('#viewsheet')?.remove();_openWorker=null}
+function closeView(){$('#viewsheet')?.remove();_openWorker=null;_openProject=null}
 function refreshWorkerSheet(){if(_openWorker){closeView();workerDetail(_openWorker)}}
+function refreshProjectSheet(){if(_openProject){const id=_openProject;closeView();projectDetail(id)}}
 function workerDetail(workerId,projectId=''){
- _openWorker=projectId?null:workerId;
  closeView();
+ _openWorker=projectId?null:workerId;
  const w=db.workers.find(x=>x.id===workerId);
  if(!w){toast(T('toastWorkerNotFound'));return}
  const head=`<div class="item" style="padding-top:0;border:0"><div class="lead"><span class="avatar">${esc(w.name.trim().charAt(0))}</span><div class="tx"><h3>${esc(w.name)}</h3><small>${esc(w.job||T('worker'))}${w.phone?' • <span class="num">'+esc(w.phone)+'</span>':''}${can('private')&&w.idNumber?' • '+T('idLabelShort')+' <span class="num">'+esc(w.idNumber)+'</span>':''}</small></div></div></div>`;
@@ -1037,7 +1078,7 @@ function editProject(id){
  modal(T('editProjectTitle'),projectForm(p),()=>{
   if(!$('#n').value.trim())return fieldErr('n',T('errProjectName'));
   Object.assign(p,{name:$('#n').value.trim(),location:$('#l').value,start:$('#d').value});
-  window.api.updateProject(p);render();toast(T('toastProjectSaved'));return true});
+  window.api.updateProject(p);render();refreshProjectSheet();toast(T('toastProjectSaved'));return true});
 }
 function delProject(id){
  const p=db.projects.find(x=>x.id===id);
@@ -1055,7 +1096,8 @@ function delProject(id){
 }
 function toggleProjectDone(id){
  const p=db.projects.find(x=>x.id===id);
- p.done=!p.done;window.api.updateProject(p);filterProjects();
+ p.done=!p.done;window.api.updateProject(p);
+ if($('#projectList'))filterProjects();
  toast(p.done?T('toastProjectFinished'):T('toastProjectReactivated'));
 }
 
@@ -1064,7 +1106,7 @@ function projectPaymentForm(pp={},preProject=''){
  const pid=pp.projectId||preProject;
  const opts=db.projects.map(p=>`<option value="${p.id}" ${p.id===pid?'selected':''}>${esc(p.name)}</option>`).join('');
  return F('pj',T('project'),`<select id="pj"><option value="">${T('chooseProject')}</option>${opts}</select>`)
- +`<div class="row">${F('am',T('amount'),`<input id="am" type="text" inputmode="decimal" oninput="digits(this)" value="${pp.amount??''}">`)}${F('dt',T('date'),`<input id="dt" type="date" value="${esc(pp.date||today())}">`)}</div>`
+ +`<div class="row">${F('am',T('amount'),`<input id="am" type="text" inputmode="decimal" oninput="digits(this)" value="${pp.amount??''}">`)}${F('dt',T('date'),`<input id="dt" type="date" value="${esc(pp.date||today())}" ${pp.id?'':curMonthDateAttrs()}>`)}</div>`
  +F('note',T('notes'),`<input id="note" placeholder="${T('fromOwnerNote')}" value="${esc(pp.note||'')}">`);
 }
 function readProjectPaymentForm(){
@@ -1075,21 +1117,22 @@ function readProjectPaymentForm(){
 function newProjectPayment(projectId=''){
  modal(T('newProjPaymentTitle'),projectPaymentForm({},projectId),()=>{
   const v=readProjectPaymentForm();if(!v)return false;
+  if(ym(v.date)!==currentMonthKey())return fieldErr('dt',T('errDateOutsideMonth'));
   const pp={id:crypto.randomUUID(),...v};
-  db.projectPayments.push(pp);window.api.addProjectPayment(pp);render();toast(T('toastProjPaymentAdded'));return true});
+  db.projectPayments.push(pp);window.api.addProjectPayment(pp);render();refreshProjectSheet();toast(T('toastProjPaymentAdded'));return true});
 }
 function editProjectPayment(id){
  const pp=db.projectPayments.find(x=>x.id===id);
  modal(T('editProjPaymentTitle'),projectPaymentForm(pp),()=>{
   const v=readProjectPaymentForm();if(!v)return false;
-  Object.assign(pp,v);window.api.updateProjectPayment(pp);render();toast(T('toastProjPaymentSaved'));return true});
+  Object.assign(pp,v);window.api.updateProjectPayment(pp);render();refreshProjectSheet();toast(T('toastProjPaymentSaved'));return true});
 }
 function delProjectPayment(id){
  const pp=db.projectPayments.find(x=>x.id===id);
  confirmBox(T('confirmDeleteProjPayment'),T('confirmDeleteProjPaymentBody').replace('{name}',`<b>${esc(projectName(pp.projectId))}</b>`).replace('{amt}',money(pp.amount)),()=>{
   db.projectPayments=db.projectPayments.filter(x=>x.id!==id);
-  window.api.deleteProjectPayment(id);render();
-  undoToast(T('toastProjPaymentDeleted'),()=>{db.projectPayments.push(pp);window.api.addProjectPayment(pp);render();toast(T('toastProjPaymentRestored'));});
+  window.api.deleteProjectPayment(id);render();refreshProjectSheet();
+  undoToast(T('toastProjPaymentDeleted'),()=>{db.projectPayments.push(pp);window.api.addProjectPayment(pp);render();refreshProjectSheet();toast(T('toastProjPaymentRestored'));});
  });
 }
 /* company-facing project print: shows the billed amount only, never worker wage or your profit.
@@ -1127,7 +1170,7 @@ function printProject(id,monthKey=''){
 let _ppMonth='',_ppRedraw=null;
 function pickProjectPrintMonth(k){_ppMonth=k||'';if(_ppRedraw)_ppRedraw()}
 function printProjectPicker(id){
- _ppMonth='';
+ _ppMonth=currentMonthKey();
  const p=db.projects.find(x=>x.id===id);
  const logs=db.logs.filter(l=>l.projectId===id);
  const wrap=document.createElement('div');wrap.id='modal';wrap.className='overlay';
@@ -1183,6 +1226,49 @@ function printWorkerFull(workerId,monthKey=''){
  printPreview(title,printDocHead(title,docType)+`<p class="muted">${esc(w.job||'')}${w.phone?' • '+esc(w.phone):''}${extra?' • '+extra:''}</p>${summary}${blocks}`);
 }
 
+/* ---------- project detail view (mirrors workerDetail: current month up front, older months
+   collapsed underneath, nothing summed across months by default) ---------- */
+function projectDetail(id){
+ closeView();
+ _openProject=id;
+ const p=db.projects.find(x=>x.id===id);
+ if(!p){toast(T('toastProjectNotFound'));return}
+ const logs=db.logs.filter(l=>l.projectId===id);
+ const pays=db.projectPayments.filter(x=>x.projectId===id);
+ const cm=currentMonthKey();
+ const curLogs=logs.filter(l=>ym(l.date)===cm), curPays=pays.filter(x=>ym(x.date)===cm);
+ const curTotal=curLogs.reduce((a,l)=>a+Number(l.wage||0),0), curReceived=curPays.reduce((a,x)=>a+Number(x.amount||0),0);
+ const head=`<div class="item" style="padding-top:0;border:0"><div class="lead"><span class="avatar tint-orange">${ic.crane(19)}</span><div class="tx"><h3>${esc(p.name)}</h3><small>${esc(p.location||'')}${p.start?' • <span class="num">'+esc(p.start)+'</span>':''}</small></div></div></div>`;
+ const logRowP=l=>`<div class="item"><div class="tx"><small><span class="num">${esc(l.date)}</span> • ${esc(workerName(l.workerId))}${l.type?' • '+esc(l.type):''}</small></div>${can('money')?`<b style="color:var(--green)">${money(l.wage)}</b>`:''}</div>`;
+ const payRowP=x=>`<div class="item"><div class="tx"><small><span class="num">${esc(x.date)}</span> • ${esc(x.note||T('payment'))}</small></div><div class="rowicons"><b style="color:var(--green)">${money(x.amount)}</b>${can('editDelete')?`
+  <button class="iconbtn" title="${T('edit')}" onclick="editProjectPayment('${x.id}')">${ic.edit(16)}</button>
+  <button class="iconbtn del" title="${T('delete')}" onclick="delProjectPayment('${x.id}')">${ic.trash(16)}</button>`:''}</div></div>`;
+ const curBlock=`<hr><span class="muted">${ML(cm,true)}</span>
+  ${can('money')?`<div class="row3"><div><span class="muted">${T('logsCount')}</span><br><b class="num">${curLogs.length}</b></div><div><span class="muted">${T('wagesLogged')}</span><br><b>${money(curTotal)}</b></div><div><span class="muted">${T('paymentsReceived')}</span><br><b style="color:var(--green)">${money(curReceived)}</b></div></div>`:''}
+  ${curLogs.length?curLogs.map(logRowP).join(''):emptyState(ic.cal,T('noLogsTitle'),T('noLogsProjectHint'))}
+  ${curPays.length?`<div style="margin-top:6px">${curPays.map(payRowP).join('')}</div>`:''}
+  <button class="btn secondary wide" style="margin-top:8px" onclick="printProject('${id}','${cm}')">${ic.print(15)} ${T('printMonthSlip')} ${ML(cm,true)}</button>`;
+ /* older months, newest-first, collapsed by default so this screen never opens onto a wall of history */
+ const pastLogGroups=groupByMonth(logs.filter(l=>ym(l.date)!==cm));
+ /* keeps the '' (undated/unparseable date) bucket instead of dropping it — a log with a bad date
+    must still show up somewhere, same as workerDetail's "بدون تاريخ" section, rather than silently
+    vanishing from the project's history */
+ const pastMonths=[...new Set([...pastLogGroups.map(([k])=>k),...monthsOf(pays.filter(x=>ym(x.date)!==cm))])].sort((a,b)=>b.localeCompare(a));
+ const pastHtml=pastMonths.length?pastMonths.map(k=>{
+  const ls=logs.filter(l=>ym(l.date)===k), xs=pays.filter(x=>ym(x.date)===k);
+  const w=ls.reduce((a,l)=>a+Number(l.wage||0),0);
+  return `<details class="msec"><summary><span>${ML(k,true)}</span><span class="msum"><span class="num">${ls.length}</span> ${T('logShort')}${can('money')?' · '+money(w):''}</span></summary>
+  <div class="mbody">${ls.map(logRowP).join('')}${xs.length?`<div style="margin-top:6px">${xs.map(payRowP).join('')}</div>`:''}
+  ${k?`<button class="btn secondary wide" style="margin-top:8px" onclick="printProject('${id}','${k}')">${ic.print(15)} ${T('printMonthSlip')} ${ML(k,true)}</button>`:''}</div></details>`;
+ }).join(''):'';
+ const body=head+curBlock
+  +`<hr><span class="muted">${T('monthsByLogs')}</span>${pastHtml||`<p class="muted">${T('noLogsHint')}</p>`}`
+  +(can('manage')?`<div class="actions" style="margin-top:14px"><button class="btn secondary" onclick="editProject('${id}')">${ic.edit(16)} ${T('edit')}</button>${p.done?`<button class="btn secondary" onclick="toggleProjectDone('${id}');refreshProjectSheet()">${ic.up(16)} ${T('reactivate')}</button>`:`<button class="btn secondary" onclick="toggleProjectDone('${id}');refreshProjectSheet()">${ic.check(16)} ${T('finishProject')}</button>`}</div>`:'')
+  +(can('projPay')?`<button class="btn success wide" style="margin-top:10px" onclick="newProjectPayment('${id}')">${ic.plus(16)} ${T('receivedPayment')}</button>`:'')
+  +`<button class="btn secondary wide" style="margin-top:10px" onclick="printProjectPicker('${id}')">${ic.print(16)} ${T('printAllMonths')}</button>`;
+ viewSheet(p.name,body);
+}
+
 /* ---------- logs CRUD ---------- */
 function logForm(l={},preWorker=''){
  const wid=l.workerId||preWorker;
@@ -1194,7 +1280,7 @@ function logForm(l={},preWorker=''){
  const billedVal=(Number(wageVal||0)+Number(profitVal||0))||'';
  return F('wi',T('workerReq'),`<select id="wi" onchange="fillDefaultWage()"><option value="">${T('chooseWorker')}</option>${opts}</select>`)
  +F('pi',T('projectReq'),`<select id="pi"><option value="">${T('chooseProject')}</option>${propts}</select>`)
- +`<div class="row">${F('dt',T('date'),`<input id="dt" type="date" value="${esc(l.date||today())}">`)}${F('hr',T('hoursCount'),`<input id="hr" type="text" inputmode="decimal" oninput="digits(this)" value="${l.hours??8}">`)}</div>`
+ +`<div class="row">${F('dt',T('date'),`<input id="dt" type="date" value="${esc(l.date||today())}" ${l.id?'':curMonthDateAttrs()}>`)}${F('hr',T('hoursCount'),`<input id="hr" type="text" inputmode="decimal" oninput="digits(this)" value="${l.hours??8}">`)}</div>`
  +`<div class="row">${F('wg',T('workerWageReq'),`<input id="wg" type="text" inputmode="decimal" oninput="digits(this);syncWage('wg')" value="${wageVal}">`)}${F('pf',T('dailyProfit'),`<input id="pf" type="text" inputmode="decimal" oninput="digits(this);syncWage('pf')" value="${profitVal}">`)}</div>`
  +F('bl',T('dueFromCompanyField'),`<input id="bl" type="text" inputmode="decimal" oninput="digits(this);syncWage('bl')" value="${billedVal}">`)
  +(l.id?'':F('pay',T('todayAdvance'),`<input id="pay" type="text" inputmode="decimal" oninput="digits(this)" value="0">`))
@@ -1221,6 +1307,7 @@ function readLogForm(){
 function newLog(workerId=''){
  modal(T('newLogTitle'),logForm({},workerId),()=>{
   const v=readLogForm();if(!v)return false;
+  if(ym(v.date)!==currentMonthKey())return fieldErr('dt',T('errDateOutsideMonth'));
   const l={id:crypto.randomUUID(),...v};
   db.logs.push(l);window.api.addLog(l);
   const pay=Number($('#pay').value||0);
@@ -1257,13 +1344,14 @@ function deleteOrphanLogs(workerId){
 function paymentForm(p={}){
  const opts=db.workers.map(w=>`<option value="${w.id}" ${w.id===p.workerId?'selected':''}>${esc(w.name)}</option>`).join('');
  return F('wi',T('workerReq'),`<select id="wi"><option value="">${T('chooseWorker')}</option>${opts}</select>`)
- +`<div class="row">${F('am',T('amount'),`<input id="am" type="text" inputmode="decimal" oninput="digits(this)" value="${p.amount??''}">`)}${F('dt',T('date'),`<input id="dt" type="date" value="${esc(p.date||today())}">`)}</div>`
+ +`<div class="row">${F('am',T('amount'),`<input id="am" type="text" inputmode="decimal" oninput="digits(this)" value="${p.amount??''}">`)}${F('dt',T('date'),`<input id="dt" type="date" value="${esc(p.date||today())}" ${p.id?'':curMonthDateAttrs()}>`)}</div>`
  +F('note',T('notes'),`<input id="note" placeholder="${T('paymentNotePlaceholder')}" value="${esc(p.note||'')}">`);
 }
 function newPayment(workerId=''){
  modal(T('newPaymentTitle'),paymentForm({workerId}),()=>{
   if(!$('#wi').value)return fieldErr('wi',T('errChooseWorker'));
   if(!Number($('#am').value))return fieldErr('am',T('errAmount'));
+  if(ym($('#dt').value)!==currentMonthKey())return fieldErr('dt',T('errDateOutsideMonth'));
   const p={id:crypto.randomUUID(),workerId:$('#wi').value,amount:Number($('#am').value),date:$('#dt').value,note:$('#note').value};
   db.payments.push(p);window.api.addPayment(p);render();refreshWorkerSheet();toast(T('toastPaymentAdded'));return true});
 }

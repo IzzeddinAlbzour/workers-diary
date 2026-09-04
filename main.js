@@ -19,6 +19,20 @@ app.on('second-instance', () => {
   if (win) { if (win.isMinimized()) win.restore(); win.focus(); }
 });
 
+/* Chromium's native form controls — e.g. the closed-state text of <input type="month"> in the
+   print-month picker — and native dialogs follow the app's UI locale (navigator.language), not
+   the page's `lang` attribute. Without this switch a fully-Arabic app showed "September 2026" in
+   English on that one control. Must be set before 'ready'; peeks the persisted language setting
+   with its own short-lived db handle since the real one doesn't open until openDbOrRecover(). */
+let uiLang = 'ar';
+try {
+  fs.mkdirSync(userData(), { recursive: true });
+  const peek = open(dbPath());
+  uiLang = peek.getSetting('lang', 'ar') === 'he' ? 'he' : 'ar';
+  peek.close();
+} catch {}
+app.commandLine.appendSwitch('lang', uiLang);
+
 function latestBackup() {
   try {
     const files = fs.readdirSync(backupsDir()).filter(f => f.endsWith('.json')).sort();
@@ -119,12 +133,14 @@ function createWindow() {
 }
 
 function setMenu() {
+  const fileLabel = uiLang === 'he' ? 'קובץ' : 'ملف';
+  const printLabel = uiLang === 'he' ? 'הדפסה' : 'طباعة';
   const template = [
     { role: 'appMenu' },
     {
-      label: 'File',
+      label: fileLabel,
       submenu: [
-        { label: 'Print', accelerator: 'CmdOrCtrl+P', click: () => win && win.webContents.executeJavaScript('window.print()') },
+        { label: printLabel, accelerator: 'CmdOrCtrl+P', click: () => win && win.webContents.executeJavaScript('window.print()') },
         { role: 'close' }
       ]
     },
