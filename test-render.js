@@ -135,7 +135,7 @@ assert.ok(printed.includes('شهر 7 / 2026'), 'single-month payslip is titled w
 assert.ok(!printed.includes('شهر 8 / 2026'), 'a single-month payslip carries no other month');
 assert.ok(printed.includes('<th>مشروع</th>'), 'project is a column, not the outer grouping');
 assert.ok(printed.includes('بيت شيمش') && printed.includes('رام الله'), 'both projects appear as rows inside the month');
-assert.ok(printed.includes('رصيد سابق (قبل هذا الشهر)'), 'payslip carries the previous balance in');
+assert.ok(!printed.includes('رصيد سابق'), 'PRIVACY: worker payslip never shows the prior-month carry-in balance');
 assert.ok(printed.includes('توقيع العامل'), 'payslip is signable');
 assert.ok(!printed.includes(profitNeedle), 'PRIVACY: the owner profit never reaches a worker-facing print');
 assert.ok(!printed.includes('ربحك') && !printed.includes('المستحق من الشركة'), 'PRIVACY: no owner-only labels');
