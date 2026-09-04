@@ -60,7 +60,7 @@
     logsCount: { ar: 'اليوميات', he: 'ימי עבודה' },
     wagesLogged: { ar: 'أجور مسجلة', he: 'שכר שנרשם' },
     paymentsReceived: { ar: 'دفعات مقبوضة', he: 'תשלומים שהתקבלו' },
-    workersInProject: { ar: 'العمال في المشروع', he: 'עובדים בפרויקט' },
+    workersInProject: { ar: 'العمال في المشروع (كل الوقت)', he: 'עובדים בפרויקט (כל הזמנים)' },
     receivedPayment: { ar: 'دفعة مقبوضة', he: 'תשלום שהתקבל' },
     printContractorSheet: { ar: 'طباعة كشف المتعهد', he: 'הדפסת דוח קבלן' },
     noProjectsTitle: { ar: 'لا توجد مشاريع بعد', he: 'עדיין אין פרויקטים' },

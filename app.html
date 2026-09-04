@@ -109,6 +109,12 @@ hr{border:0;border-top:1px solid var(--line);margin:12px 0}
    silently covered by page content — now it scrolls horizontally in one row instead */
 nav{position:fixed;bottom:0;left:0;right:0;max-width:620px;margin:auto;background:rgba(255,255,255,.92);backdrop-filter:blur(10px);border-top:1px solid var(--line);display:flex;overflow-x:auto;scrollbar-width:none;z-index:10;padding-bottom:env(safe-area-inset-bottom)}
 nav::-webkit-scrollbar{display:none}
+/* on narrow screens 8 admin tabs overflow and scroll — a plain cut edge looked like the list just
+   ended there, so nothing hinted more tabs were a swipe away. A soft fade on both edges signals
+   "there's more" the way native iOS/Android tab bars do. */
+@media(max-width:899px){
+ nav{-webkit-mask-image:linear-gradient(to left,transparent,#000 18px,#000 calc(100% - 18px),transparent);mask-image:linear-gradient(to left,transparent,#000 18px,#000 calc(100% - 18px),transparent)}
+}
 nav button{flex:0 0 20%;min-width:64px;color:#77839a;padding:8px 2px 9px;font-size:11px;font-weight:600;display:flex;flex-direction:column;align-items:center;gap:3px;position:relative;transition:color .15s}
 nav button svg{transition:transform .18s var(--ease)}
 nav button.active{color:var(--blue);font-weight:800}
@@ -1203,11 +1209,11 @@ function printWorkerFull(workerId,monthKey=''){
   const foot=`<tfoot><tr><td colspan="${showMoney?4:3}">${T('monthTotalLabel')} — <span class="num">${c.days}</span> ${T('logShort')} · <span class="num">${c.hours}</span> ${T('hourUnit')}</td>${showMoney?`<td>${money(c.earned)}</td>`:''}</tr></tfoot>`;
   const monthPays=[...allPays.filter(p=>ym(p.date)===k)].sort((a,b)=>a.date.localeCompare(b.date));
   const paysTable=showMoney&&monthPays.length?`<table class="ptable"><thead><tr><th>${T('paymentDateLabel')}</th><th>${T('notes')}</th><th>${T('amountPlain')}</th></tr></thead><tbody>${monthPays.map(p=>`<tr><td>${esc(p.date)}</td><td>${esc(p.note||'')}</td><td>${money(p.amount)}</td></tr>`).join('')}</tbody><tfoot><tr><td colspan="2">${T('paidInMonth')}</td><td>${money(c.paid)}</td></tr></tfoot></table>`:'';
+  /* worker copy: no carried-over prior-month balance — he only sees this month's due/paid/net */
   const settle=showMoney?`<table class="month-sum"><tbody>
-   <tr><td>${T('prevBalance')}</td><td>${money(c.prev)}</td></tr>
    <tr><td>${T('monthDue')}</td><td>${money(c.earned)}</td></tr>
    <tr><td>${T('monthPaid')}</td><td>${money(c.paid)}</td></tr>
-   <tr class="final"><td>${T('currentBalance')}</td><td>${money(c.balance)}</td></tr></tbody></table>`:'';
+   <tr class="final"><td>${T('currentBalance')}</td><td>${money(c.earned-c.paid)}</td></tr></tbody></table>`:'';
   return `<div class="month-block"><div class="month-title">${ML(k)}</div>
    <table class="ptable"><thead><tr><th>${T('date')}</th><th>${T('project')}</th><th>${T('hours')}</th><th>${T('workType')}</th>${showMoney?`<th>${T('workerWage')}</th>`:''}</tr></thead><tbody>${rows}</tbody>${foot}</table>
    ${paysTable}${settle}${sigBlock()}</div>`;
@@ -1239,13 +1245,12 @@ function projectDetail(id){
  const curLogs=logs.filter(l=>ym(l.date)===cm), curPays=pays.filter(x=>ym(x.date)===cm);
  const curTotal=curLogs.reduce((a,l)=>a+Number(l.wage||0),0), curReceived=curPays.reduce((a,x)=>a+Number(x.amount||0),0);
  const head=`<div class="item" style="padding-top:0;border:0"><div class="lead"><span class="avatar tint-orange">${ic.crane(19)}</span><div class="tx"><h3>${esc(p.name)}</h3><small>${esc(p.location||'')}${p.start?' • <span class="num">'+esc(p.start)+'</span>':''}</small></div></div></div>`;
- const logRowP=l=>`<div class="item"><div class="tx"><small><span class="num">${esc(l.date)}</span> • ${esc(workerName(l.workerId))}${l.type?' • '+esc(l.type):''}</small></div>${can('money')?`<b style="color:var(--green)">${money(l.wage)}</b>`:''}</div>`;
  const payRowP=x=>`<div class="item"><div class="tx"><small><span class="num">${esc(x.date)}</span> • ${esc(x.note||T('payment'))}</small></div><div class="rowicons"><b style="color:var(--green)">${money(x.amount)}</b>${can('editDelete')?`
   <button class="iconbtn" title="${T('edit')}" onclick="editProjectPayment('${x.id}')">${ic.edit(16)}</button>
   <button class="iconbtn del" title="${T('delete')}" onclick="delProjectPayment('${x.id}')">${ic.trash(16)}</button>`:''}</div></div>`;
  const curBlock=`<hr><span class="muted">${ML(cm,true)}</span>
   ${can('money')?`<div class="row3"><div><span class="muted">${T('logsCount')}</span><br><b class="num">${curLogs.length}</b></div><div><span class="muted">${T('wagesLogged')}</span><br><b>${money(curTotal)}</b></div><div><span class="muted">${T('paymentsReceived')}</span><br><b style="color:var(--green)">${money(curReceived)}</b></div></div>`:''}
-  ${curLogs.length?curLogs.map(logRowP).join(''):emptyState(ic.cal,T('noLogsTitle'),T('noLogsProjectHint'))}
+  ${curLogs.length?curLogs.map(l=>logRow(l,true)).join(''):emptyState(ic.cal,T('noLogsTitle'),T('noLogsProjectHint'))}
   ${curPays.length?`<div style="margin-top:6px">${curPays.map(payRowP).join('')}</div>`:''}
   <button class="btn secondary wide" style="margin-top:8px" onclick="printProject('${id}','${cm}')">${ic.print(15)} ${T('printMonthSlip')} ${ML(cm,true)}</button>`;
  /* older months, newest-first, collapsed by default so this screen never opens onto a wall of history */
@@ -1258,12 +1263,12 @@ function projectDetail(id){
   const ls=logs.filter(l=>ym(l.date)===k), xs=pays.filter(x=>ym(x.date)===k);
   const w=ls.reduce((a,l)=>a+Number(l.wage||0),0);
   return `<details class="msec"><summary><span>${ML(k,true)}</span><span class="msum"><span class="num">${ls.length}</span> ${T('logShort')}${can('money')?' · '+money(w):''}</span></summary>
-  <div class="mbody">${ls.map(logRowP).join('')}${xs.length?`<div style="margin-top:6px">${xs.map(payRowP).join('')}</div>`:''}
+  <div class="mbody">${ls.map(l=>logRow(l,true)).join('')}${xs.length?`<div style="margin-top:6px">${xs.map(payRowP).join('')}</div>`:''}
   ${k?`<button class="btn secondary wide" style="margin-top:8px" onclick="printProject('${id}','${k}')">${ic.print(15)} ${T('printMonthSlip')} ${ML(k,true)}</button>`:''}</div></details>`;
  }).join(''):'';
  const body=head+curBlock
   +`<hr><span class="muted">${T('monthsByLogs')}</span>${pastHtml||`<p class="muted">${T('noLogsHint')}</p>`}`
-  +(can('manage')?`<div class="actions" style="margin-top:14px"><button class="btn secondary" onclick="editProject('${id}')">${ic.edit(16)} ${T('edit')}</button>${p.done?`<button class="btn secondary" onclick="toggleProjectDone('${id}');refreshProjectSheet()">${ic.up(16)} ${T('reactivate')}</button>`:`<button class="btn secondary" onclick="toggleProjectDone('${id}');refreshProjectSheet()">${ic.check(16)} ${T('finishProject')}</button>`}</div>`:'')
+  +(can('manage')?`<div class="actions" style="margin-top:14px"><button class="btn secondary" onclick="editProject('${id}')">${ic.edit(16)} ${T('edit')}</button>${p.done?`<button class="btn secondary" onclick="toggleProjectDone('${id}');refreshProjectSheet()">${ic.up(16)} ${T('reactivate')}</button>`:`<button class="btn secondary" onclick="toggleProjectDone('${id}');refreshProjectSheet()">${ic.check(16)} ${T('finishProject')}</button>`}<button class="btn danger" onclick="closeView();delProject('${id}')">${ic.trash(16)} ${T('delete')}</button></div>`:'')
   +(can('projPay')?`<button class="btn success wide" style="margin-top:10px" onclick="newProjectPayment('${id}')">${ic.plus(16)} ${T('receivedPayment')}</button>`:'')
   +`<button class="btn secondary wide" style="margin-top:10px" onclick="printProjectPicker('${id}')">${ic.print(16)} ${T('printAllMonths')}</button>`;
  viewSheet(p.name,body);
