@@ -56,9 +56,11 @@ function openDbOrRecover() {
       });
       if (r === 0) {
         try {
-          for (const suf of ['', '-wal', '-shm']) { try { fs.rmSync(dbPath() + suf); } catch {} }
+          const data = JSON.parse(fs.readFileSync(bak, 'utf8')); // parse before wiping, so a bad backup never costs the old db
+          if (!data || !Array.isArray(data.workers)) throw new Error('bad backup');
+          for (const suf of ['', '-wal', '-shm']) { try { fs.renameSync(dbPath() + suf, dbPath() + suf + '.broken'); } catch {} }
           db = open(dbPath());
-          db.importAll(JSON.parse(fs.readFileSync(bak, 'utf8')));
+          db.importAll(data);
           return true;
         } catch (e2) {
           dialog.showErrorBox('يوميات العمال', 'فشلت الاستعادة: ' + e2.message);
@@ -271,8 +273,8 @@ app.whenReady().then(() => {
       filters: [{ name: 'JSON', extensions: ['json'] }]
     });
     if (r.canceled || !r.filePath) return false;
-    fs.writeFileSync(r.filePath, JSON.stringify(db.getAll(), null, 2));
-    return true;
+    try { fs.writeFileSync(r.filePath, JSON.stringify(db.getAll(), null, 2)); return true; }
+    catch (e) { dialog.showErrorBox('يوميات العمال', 'تعذر حفظ الملف: ' + e.message); return false; }
   });
 
   ipcMain.handle('importBackup', async () => {

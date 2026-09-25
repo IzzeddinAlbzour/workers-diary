@@ -668,11 +668,11 @@ function archive(){
  ${months.length?`<div class="card" style="background:transparent;box-shadow:none;padding:4px 2px"><small class="muted"><span class="num">${months.length}</span> ${T('archivedMonthsCount')}</small></div>${months.map(k=>monthCard(k,false)).join('')}`:`<div class="card">${emptyState(ic.cal,T('archiveEmptyTitle'),T('archiveEmptyHint'))}</div>`}`;
 }
 function accounts(){
- const s=stats();
- $('#main').innerHTML=`<div class="grid"><div class="card stat"><span class="ic tint-green">${ic.chart(20)}</span><b style="color:var(--green)">${money(s.earned)}</b><span class="lbl">${T('totalDueWorkers')}</span></div><div class="card stat"><span class="ic tint-orange">${ic.pay(20)}</span><b style="color:var(--orange)">${money(s.paid)}</b><span class="lbl">${T('totalPaidWorkers')}</span></div>
- <div class="card stat"><span class="ic tint-purple">${ic.wallet(20)}</span><b style="color:var(--purple)">${money(s.profit)}</b><span class="lbl">${T('totalProfit')}</span></div><div class="card stat"><span class="ic tint-blue">${ic.crane(20)}</span><b>${money(s.billed)}</b><span class="lbl">${T('dueFromCompany')}</span></div></div>
+ const s=stats(),ms=monthStats(),cm=currentMonthKey();
+ $('#main').innerHTML=`<div class="card" style="background:transparent;box-shadow:none;padding:4px 2px"><span class="month-tag">${ic.cal(12)}${ML(cm)}</span></div><div class="grid"><div class="card stat"><span class="ic tint-green">${ic.chart(20)}</span><b style="color:var(--green)">${money(ms.earned)}</b><span class="lbl">${T('monthDue')}</span></div><div class="card stat"><span class="ic tint-orange">${ic.pay(20)}</span><b style="color:var(--orange)">${money(ms.paid)}</b><span class="lbl">${T('monthPaid')}</span></div>
+ <div class="card stat"><span class="ic tint-purple">${ic.wallet(20)}</span><b style="color:var(--purple)">${money(ms.profit)}</b><span class="lbl">${T('yourProfit')}</span></div><div class="card stat"><span class="ic tint-blue">${ic.crane(20)}</span><b>${money(ms.billed)}</b><span class="lbl">${T('dueFromCompany')}</span></div></div>
  <div class="card"><h3>${T('totalBalance')}</h3><div class="total">${money(s.balance)}</div><p class="muted" style="margin:4px 0 12px">${T('balanceHint')}</p><button class="btn success wide" onclick="newPayment()">${ic.plus(16)} ${T('logPaymentAdvance')}</button></div>
- <div class="card"><h3>${T('recentPayments')}</h3>${db.payments.slice(-10).reverse().map(p=>`<div class="item"><div class="lead"><div class="tx"><b>${esc(workerName(p.workerId))}</b><br><small><span class="num">${esc(p.date)}</span> • ${esc(p.note||T('payment'))}</small></div></div>
+ <div class="card"><h3>${T('recentPayments')} — ${ML(cm,true)}</h3>${db.payments.filter(p=>ym(p.date)===cm).sort((a,b)=>b.date.localeCompare(a.date)).map(p=>`<div class="item"><div class="lead"><div class="tx"><b>${esc(workerName(p.workerId))}</b><br><small><span class="num">${esc(p.date)}</span> • ${esc(p.note||T('payment'))}</small></div></div>
   <div class="rowicons"><b style="color:var(--orange)">${money(p.amount)}</b>${can('editDelete')?`
    <button class="iconbtn" title="${T('edit')}" onclick="editPayment('${p.id}')">${ic.edit(16)}</button>
    <button class="iconbtn del" title="${T('delete')}" onclick="delPayment('${p.id}')">${ic.trash(16)}</button>`:''}
@@ -1123,6 +1123,7 @@ function projectPaymentForm(pp={},preProject=''){
 function readProjectPaymentForm(){
  if(!$('#pj').value){fieldErr('pj',T('errChooseProject'));return null}
  if(!Number($('#am').value)){fieldErr('am',T('errAmount'));return null}
+ if(!ym($('#dt').value)){fieldErr('dt',T('errDateRequired'));return null}
  return {projectId:$('#pj').value,amount:Number($('#am').value),date:$('#dt').value,note:$('#note').value};
 }
 function newProjectPayment(projectId=''){
@@ -1310,7 +1311,8 @@ function fillDefaultWage(){
 function readLogForm(){
  const wid=$('#wi').value;if(!wid){fieldErr('wi',T('errChooseWorker'));return null}
  if(!$('#pi').value){fieldErr('pi',T('errChooseProjectFirst'));return null}
- const worker=db.workers.find(w=>w.id===wid);const wage=Number($('#wg').value||worker.defaultWage||0);
+ if(!ym($('#dt').value)){fieldErr('dt',T('errDateRequired'));return null}
+ const worker=db.workers.find(w=>w.id===wid);const wage=Number($('#wg').value||worker?.defaultWage||0);
  if(!wage){fieldErr('wg',T('errWage'));return null}
  const profit=Number($('#pf').value||0);
  return {workerId:wid,projectId:$('#pi').value,date:$('#dt').value,hours:Number($('#hr').value||0),wage,profit,type:$('#type').value,note:$('#note').value};
@@ -1371,6 +1373,7 @@ function editPayment(id){
  modal(T('editPaymentTitle'),paymentForm(p),()=>{
   if(!$('#wi').value)return fieldErr('wi',T('errChooseWorker'));
   if(!Number($('#am').value))return fieldErr('am',T('errAmount'));
+  if(!ym($('#dt').value))return fieldErr('dt',T('errDateRequired'));
   Object.assign(p,{workerId:$('#wi').value,amount:Number($('#am').value),date:$('#dt').value,note:$('#note').value});
   window.api.updatePayment(p);render();refreshWorkerSheet();toast(T('toastPaymentSaved'));return true});
 }
