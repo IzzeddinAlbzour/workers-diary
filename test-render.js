@@ -117,7 +117,7 @@ assert.ok(main().includes('class="mhead"'), 'clearing the month restores month b
 // ---- worker profile: diaries collapsed per month, newest open ----
 run(`workerDetail('w1')`);
 let sheet = lastCreated.innerHTML;
-assert.strictEqual((sheet.match(/class="msec"/g) || []).length, 3, 'one collapsible section per month');
+assert.strictEqual((sheet.match(/class="msec"/g) || []).length, 4, 'one collapsible section per data month plus the live month');
 assert.strictEqual((sheet.match(/<details class="msec" open>/g) || []).length, 1, 'only the newest month starts open');
 assert.ok(sheet.indexOf('شهر 8 / 2026') < sheet.indexOf('شهر 6 / 2026'), 'newest month first');
 assert.ok(sheet.includes(`printWorkerFull('w1','2026-07')`), 'each month offers its own payslip print');

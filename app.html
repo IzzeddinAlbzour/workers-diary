@@ -354,6 +354,8 @@ const money=n=>`<span class="num">${Number(n||0).toLocaleString(LANG==='he'?'he-
 const today=()=>{const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`};
 /* single source of truth for "which month is live" — every current-month scoped view reads this */
 const currentMonthKey=()=>ym(today());
+/* reports open on the live month, never on an all-months mix */
+_rMonth=currentMonthKey();({from:_rFrom,to:_rTo}=monthRange(_rMonth));
 function esc(s){return String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))}
 /* accept Arabic-Indic digits (٠١٢٣ / ۰۱۲۳) and normalize to Latin so Number() works */
 function digits(el){
@@ -593,10 +595,10 @@ function reports(){
  const fProfit=logs.reduce((a,l)=>a+Number(l.profit||0),0);
  const fHours=logs.reduce((a,l)=>a+Number(l.hours||0),0);
  const rows=reportBodyRows(logs);
- let byWorker=db.workers.map(w=>{const ls=logs.filter(l=>l.workerId===w.id);return {w,days:ls.length,hours:ls.reduce((a,l)=>a+Number(l.hours||0),0),earned:ls.reduce((a,l)=>a+Number(l.wage||0),0),paid:db.payments.filter(p=>p.workerId===w.id).reduce((a,p)=>a+Number(p.amount||0),0)}}).filter(x=>x.days||x.paid);
+ let byWorker=db.workers.map(w=>{const ls=logs.filter(l=>l.workerId===w.id);return {w,days:ls.length,hours:ls.reduce((a,l)=>a+Number(l.hours||0),0),earned:ls.reduce((a,l)=>a+Number(l.wage||0),0),paid:db.payments.filter(p=>p.workerId===w.id&&(!_rFrom||p.date>=_rFrom)&&(!_rTo||p.date<=_rTo)).reduce((a,p)=>a+Number(p.amount||0),0)}}).filter(x=>x.days||x.paid);
  if(_rsort==='name')byWorker.sort((a,b)=>a.w.name.localeCompare(b.w.name,'ar'));
  else if(_rsort==='earned')byWorker.sort((a,b)=>b.earned-a.earned);
- const filterActive=_rWorker||_rProject||_rFrom||_rTo;
+ const filterActive=_rWorker||_rProject||_rMonth!==currentMonthKey();
  /* the month scope is chosen against the logs that pass the worker/project filter, so the chips only
     ever offer months that would actually return rows */
  const scopeLogs=db.logs.filter(l=>(!_rWorker||l.workerId===_rWorker)&&(!_rProject||l.projectId===_rProject));
@@ -605,7 +607,7 @@ function reports(){
  <div class="field"><label for="rm">${T('month')}</label>${monthBar('rm',_rMonth,'setReportMonth')}${monthChips(scopeLogs,_rMonth,'setReportMonth')}<div class="msg"></div></div>
  <p class="muted" style="margin:0 0 8px">${_rMonth?`${T('singleMonthOnly')}: <b>${ML(_rMonth)}</b>`:T('allMonthsBandedHint')}</p>
  <div class="row">${F('rf',T('fromDate'),`<input id="rf" type="date" value="${_rFrom}" onchange="_rFrom=this.value;_rMonth='';reports()">`)}${F('rt',T('toDate'),`<input id="rt" type="date" value="${_rTo}" onchange="_rTo=this.value;_rMonth='';reports()">`)}</div>
- ${filterActive?`<button class="btn secondary wide" onclick="_rWorker='';_rProject='';_rMonth='';_rFrom='';_rTo='';reports()">${ic.x(15)} ${T('clearFilter')}</button>`:''}</div>
+ ${filterActive?`<button class="btn secondary wide" onclick="_rWorker='';_rProject='';setReportMonth(currentMonthKey())">${ic.x(15)} ${T('clearFilter')}</button>`:''}</div>
  <div class="card"><h3>${T('reportSummary')}</h3><div class="grid">
  <div><span class="muted">${T('days')}</span><br><b class="num">${logs.length}</b></div><div><span class="muted">${T('hours')}</span><br><b class="num">${fHours}</b></div>
  <div><span class="muted">${T('workerWages')}</span><br><b style="color:var(--green)">${money(fEarned)}</b></div><div><span class="muted">${T('yourProfit')}</span><br><b style="color:var(--purple)">${money(fProfit)}</b></div>
@@ -968,8 +970,9 @@ function workerDetail(workerId,projectId=''){
   <button class="btn secondary wide" style="margin-top:10px" onclick="workerDetail('${workerId}')">${ic.users(15)} ${T('fullProfile')}</button>`;
  }else{
   const logs=db.logs.filter(l=>l.workerId===workerId);
-  const earned=logs.reduce((a,l)=>a+Number(l.wage||0),0);
-  const paid=db.payments.filter(p=>p.workerId===workerId).reduce((a,p)=>a+Number(p.amount||0),0);
+  const allPays=db.payments.filter(p=>p.workerId===workerId);
+  const cm=currentMonthKey();
+  const cur=carryOver(logs,allPays,cm);
   const orphanLogs=logs.filter(l=>!l.projectId||!db.projects.some(p=>p.id===l.projectId));
   const orphanWage=orphanLogs.reduce((a,l)=>a+Number(l.wage||0),0);
   const orphanRows=[...orphanLogs].sort((a,b)=>b.date.localeCompare(a.date)).map(l=>logRow(l,true)).join('');
@@ -981,26 +984,28 @@ function workerDetail(workerId,projectId=''){
    <button class="btn danger" style="margin-top:10px" onclick="deleteOrphanLogs('${workerId}')">${ic.trash(16)} ${T('deleteOrphans')}</button></div></div></div>`:'';
   const byP={};logs.forEach(l=>{const k=l.projectId||'';byP[k]=byP[k]||{days:0,wage:0};byP[k].days++;byP[k].wage+=Number(l.wage||0)});
   const projRows=Object.entries(byP).map(([pid,v])=>`<div class="item"><div class="tx"><b>${esc(pid?projectName(pid):T('noProjectLabel'))}</b></div><div style="text-align:left"><span class="num">${v.days}</span> ${T('logShort')}${can('money')?` • ${money(v.wage)}`:''}</div></div>`).join('')||emptyState(ic.crane,T('noProjectsForWorker'),T('noProjectsForWorkerHint'));
-  /* diaries split per month, newest month open — native <details>, so no collapse state to track */
-  const monthGroups=groupByMonth([...logs].sort((a,b)=>b.date.localeCompare(a.date)));
-  const allLogsHtml=monthGroups.length?monthGroups.map(([k,ls],i)=>{
-   const wage=ls.reduce((a,l)=>a+Number(l.wage||0),0),hrs=ls.reduce((a,l)=>a+Number(l.hours||0),0);
-   return `<details class="msec"${i===0?' open':''}><summary><span>${ML(k,true)}</span><span class="msum"><span class="num">${ls.length}</span> ${T('logShort')} · <span class="num">${hrs}</span> ${T('hourUnit')}${can('money')?' · '+money(wage):''}</span></summary>
-   <div class="mbody">${ls.map(l=>logRow(l,true)).join('')}
-   ${k?`<button class="btn secondary wide" style="margin-top:8px" onclick="printWorkerFull('${workerId}','${k}')">${ic.print(15)} ${T('printMonthSlip')} ${ML(k,true)}</button>`:''}</div></details>`;
-  }).join(''):emptyState(ic.cal,T('noLogsTitle'),T('noLogsHint'));
-  const pays=db.payments.filter(p=>p.workerId===workerId).slice(-5).reverse();
-  const paysHtml=pays.map(p=>`<div class="item"><div class="tx"><small><span class="num">${esc(p.date)}</span> • ${esc(p.note||T('payment'))}</small></div><div class="rowicons"><b style="color:var(--orange)">${money(p.amount)}</b>${can('editDelete')?`
+  /* one section per month (logs AND payments), current month open — each with its own due/paid/net */
+  const payRow=p=>`<div class="item"><div class="tx"><small><span class="num">${esc(p.date)}</span> • ${esc(p.note||T('payment'))}</small></div><div class="rowicons"><b style="color:var(--orange)">${money(p.amount)}</b>${can('editDelete')?`
    <button class="iconbtn" title="${T('edit')}" onclick="editPayment('${p.id}')">${ic.edit(16)}</button>
-   <button class="iconbtn del" title="${T('delete')}" onclick="delPayment('${p.id}')">${ic.trash(16)}</button>`:''}</div></div>`).join('')||emptyState(ic.pay,T('noPaymentsTitle'),T('noPaymentsHint'));
+   <button class="iconbtn del" title="${T('delete')}" onclick="delPayment('${p.id}')">${ic.trash(16)}</button>`:''}</div></div>`;
+  const months=[...new Set([cm,...monthsOf(logs),...monthsOf(allPays)])].sort((a,b)=>b.localeCompare(a));
+  const allLogsHtml=months.map(k=>{
+   const ls=logs.filter(l=>ym(l.date)===k).sort((a,b)=>b.date.localeCompare(a.date)),ps=allPays.filter(p=>ym(p.date)===k).sort((a,b)=>b.date.localeCompare(a.date));
+   if(k!==cm&&!ls.length&&!ps.length)return '';
+   const wage=ls.reduce((a,l)=>a+Number(l.wage||0),0),hrs=ls.reduce((a,l)=>a+Number(l.hours||0),0),pd=ps.reduce((a,p)=>a+Number(p.amount||0),0);
+   return `<details class="msec"${k===cm?' open':''}><summary><span>${ML(k,true)}</span><span class="msum"><span class="num">${ls.length}</span> ${T('logShort')} · <span class="num">${hrs}</span> ${T('hourUnit')}${can('money')?' · '+money(wage):''}</span></summary>
+   <div class="mbody">${ls.map(l=>logRow(l,true)).join('')||`<p class="muted">${T('noLogsTitle')}</p>`}
+   ${can('money')&&ps.length?`<div style="margin-top:6px">${ps.map(payRow).join('')}</div>`:''}
+   ${can('money')?`<div class="row3" style="margin-top:6px"><div><span class="muted">${T('monthDue')}</span><br><b style="color:var(--green)">${money(wage)}</b></div><div><span class="muted">${T('monthPaid')}</span><br><b style="color:var(--orange)">${money(pd)}</b></div><div><span class="muted">${T('balance')}</span><br><b>${money(wage-pd)}</b></div></div>`:''}
+   ${k?`<button class="btn secondary wide" style="margin-top:8px" onclick="printWorkerFull('${workerId}','${k}')">${ic.print(15)} ${T('printMonthSlip')} ${ML(k,true)}</button>`:''}</div></details>`;
+  }).join('');
   body=head
    +orphanWarning
-   +(can('money')?`<hr><div class="row3"><div><span class="muted">${T('due')}</span><br><b style="color:var(--green)">${money(earned)}</b></div><div><span class="muted">${T('paidAmount')}</span><br><b style="color:var(--orange)">${money(paid)}</b></div><div><span class="muted">${T('balance')}</span><br><b>${money(earned-paid)}</b></div></div>`:'')
+   +(can('money')?`<hr><span class="muted">${ML(cm,true)}</span><div class="row3"><div><span class="muted">${T('monthDue')}</span><br><b style="color:var(--green)">${money(cur.earned)}</b></div><div><span class="muted">${T('monthPaid')}</span><br><b style="color:var(--orange)">${money(cur.paid)}</b></div><div><span class="muted">${T('balance')}</span><br><b>${money(cur.earned-cur.paid)}</b></div></div>`:'')
    +`<hr><span class="muted">${T('navProjects')}</span>${projRows}`
    +`<hr><span class="muted">${T('monthsByLogs')}</span>${allLogsHtml}`
-   +(can('money')?`<hr><span class="muted">${T('lastPayments')}</span>${paysHtml}`:'')
    +`<div class="actions" style="margin-top:14px">${can('logs')?`<button class="btn primary" onclick="newLog('${workerId}')">${ic.plus(16)} ${T('addLog')}</button><button class="btn success" onclick="newPayment('${workerId}')">${ic.pay(16)} ${T('payment')}</button>`:''}</div>`
-   +(can('logs')?`<button class="btn secondary wide" style="margin-top:10px" onclick="printWorkerFull('${workerId}')">${ic.print(16)} ${T('printAllMonths')}</button>`:'');
+   +(can('logs')?`<button class="btn secondary wide" style="margin-top:10px" onclick="printWorkerFull('${workerId}','${cm}')">${ic.print(16)} ${T('printMonthSlip')} ${ML(cm,true)}</button>`:'');
  }
  viewSheet(w.name,body);
 }
@@ -1201,8 +1206,9 @@ function printWorkerFull(workerId,monthKey=''){
  const showMoney=can('money');
  /* month is the outer section and the project becomes a column: one month = one page = one payslip
     the worker signs. Oldest month first so the carry-over lines read forward in time. */
- const groups=groupByMonth([...allLogs].sort((a,b)=>a.date.localeCompare(b.date)),false)
-  .filter(([k])=>!monthKey||k===monthKey);
+ const groups=[...new Set([...monthsOf(allLogs,false),...monthsOf(allPays,false)])]
+  .filter(k=>!monthKey||k===monthKey)
+  .map(k=>[k,allLogs.filter(l=>ym(l.date)===k).sort((a,b)=>a.date.localeCompare(b.date))]);
  const blocks=groups.map(([k,ls])=>{
   const rows=ls.map(l=>`<tr><td>${esc(l.date)}</td><td>${esc(l.projectId?projectName(l.projectId):T('noProjectLabel'))}</td><td>${esc(l.hours||0)}</td><td>${esc(l.type||'')}</td>${showMoney?`<td>${money(l.wage)}</td>`:''}</tr>`).join('');
   const c=carryOver(allLogs,allPays,k);
