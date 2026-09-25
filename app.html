@@ -608,7 +608,7 @@ function reports(){
  <p class="muted" style="margin:0 0 8px">${_rMonth?`${T('singleMonthOnly')}: <b>${ML(_rMonth)}</b>`:T('allMonthsBandedHint')}</p>
  <div class="row">${F('rf',T('fromDate'),`<input id="rf" type="date" value="${_rFrom}" onchange="_rFrom=this.value;_rMonth='';reports()">`)}${F('rt',T('toDate'),`<input id="rt" type="date" value="${_rTo}" onchange="_rTo=this.value;_rMonth='';reports()">`)}</div>
  ${filterActive?`<button class="btn secondary wide" onclick="_rWorker='';_rProject='';setReportMonth(currentMonthKey())">${ic.x(15)} ${T('clearFilter')}</button>`:''}</div>
- <div class="card"><h3>${T('reportSummary')}</h3><div class="grid">
+ <div class="card"><h3>${T('reportSummary')} <span class="month-tag">${ic.cal(12)}${_rMonth?ML(_rMonth,true):(_rFrom||_rTo?`${_rFrom||'…'} — ${_rTo||'…'}`:T('allMonths'))}</span></h3><div class="grid">
  <div><span class="muted">${T('days')}</span><br><b class="num">${logs.length}</b></div><div><span class="muted">${T('hours')}</span><br><b class="num">${fHours}</b></div>
  <div><span class="muted">${T('workerWages')}</span><br><b style="color:var(--green)">${money(fEarned)}</b></div><div><span class="muted">${T('yourProfit')}</span><br><b style="color:var(--purple)">${money(fProfit)}</b></div>
  <div style="grid-column:1/-1"><span class="muted">${T('dueFromCompany')}</span><br><b>${money(fEarned+fProfit)}</b></div></div>
@@ -636,7 +636,7 @@ function printReportView(){
  const totalWage=logs.reduce((a,l)=>a+Number(l.wage||0),0),totalProfit=logs.reduce((a,l)=>a+Number(l.profit||0),0);
  const base=_rWorker?workerName(_rWorker):(_rProject?projectName(_rProject):T('generalReport'));
  const title=_rMonth?`${base} — ${ML(_rMonth,true)}`:base;
- printPreview(title,printDocHead(title,_rMonth?`${T('internalReport')} — ${ML(_rMonth)}`:T('internalReport'))+`<table class="ptable"><thead><tr><th>${T('date')}</th><th>${T('worker')}</th><th>${T('project')}</th><th>${T('hours')}</th><th>${T('workType')}</th><th>${T('workerWage')}</th><th>${T('yourProfit')}</th><th>${T('dueFromCompany')}</th></tr></thead><tbody>${rows}</tbody><tfoot><tr><td colspan="5">${T('grandTotal')}</td><td>${money(totalWage)}</td><td>${money(totalProfit)}</td><td>${money(totalWage+totalProfit)}</td></tr></tfoot></table>`);
+ printPreview(title,printDocHead(title,_rMonth?`${T('internalReport')} — ${ML(_rMonth)}`:T('internalReport'))+`<table class="ptable"><thead><tr><th>${T('date')}</th><th>${T('worker')}</th><th>${T('project')}</th><th>${T('hours')}</th><th>${T('workType')}</th><th>${T('workerWage')}</th><th>${T('yourProfit')}</th><th>${T('dueFromCompany')}</th></tr></thead><tbody>${rows}</tbody>${monthsOf(logs).length<=1?`<tfoot><tr><td colspan="5">${T('monthlyTotal')}${_rMonth?' '+ML(_rMonth,true):''}</td><td>${money(totalWage)}</td><td>${money(totalProfit)}</td><td>${money(totalWage+totalProfit)}</td></tr></tfoot>`:''}</table>`);
 }
 /* ---------- archive: every month that isn't the current one, browsable and still fully editable
    through the same reports()/workerDetail() screens — nothing is ever deleted, months just move
@@ -963,10 +963,13 @@ function workerDetail(workerId,projectId=''){
  let body;
  if(projectId){
   const logs=db.logs.filter(l=>l.workerId===workerId&&l.projectId===projectId);
-  const hours=logs.reduce((a,l)=>a+Number(l.hours||0),0), wage=logs.reduce((a,l)=>a+Number(l.wage||0),0);
+  const cm=currentMonthKey();
+  const sec=groupByMonth([...logs].sort((a,b)=>b.date.localeCompare(a.date))).map(([k,ls],i)=>{
+   const hrs=ls.reduce((a,l)=>a+Number(l.hours||0),0), wg=ls.reduce((a,l)=>a+Number(l.wage||0),0);
+   return `<details class="msec"${k===cm||(i===0&&!logs.some(l=>ym(l.date)===cm))?' open':''}><summary><span>${ML(k,true)}</span><span class="msum"><span class="num">${ls.length}</span> ${T('logShort')} · <span class="num">${hrs}</span> ${T('hourUnit')}${can('money')?' · '+money(wg):''}</span></summary><div class="mbody">${ls.map(l=>logRow(l,true)).join('')}</div></details>`;
+  }).join('');
   body=head+`<hr><span class="muted">${T('project')}</span><h3 style="margin:2px 0 10px">${esc(projectName(projectId))}</h3>
-  <div class="row3"><div><span class="muted">${T('days')}</span><br><b class="num">${logs.length}</b></div><div><span class="muted">${T('hours')}</span><br><b class="num">${hours}</b></div>${can('money')?`<div><span class="muted">${T('workerWage')}</span><br><b style="color:var(--green)">${money(wage)}</b></div>`:'<div></div>'}</div>
-  <hr>${logs.length?logs.map(l=>logRow(l,true)).join(''):emptyState(ic.cal,T('noLogsTitle'),T('noLogsProjectHint'))}
+  ${sec||emptyState(ic.cal,T('noLogsTitle'),T('noLogsProjectHint'))}
   <button class="btn secondary wide" style="margin-top:10px" onclick="workerDetail('${workerId}')">${ic.users(15)} ${T('fullProfile')}</button>`;
  }else{
   const logs=db.logs.filter(l=>l.workerId===workerId);
@@ -982,7 +985,7 @@ function workerDetail(workerId,projectId=''){
    <p class="muted" style="margin:4px 0 10px">${T('orphanLogsHint')}${can('money')?` ${T('due')} ${money(orphanWage)}`:''}. ${T('orphanLogsAction')}</p>
    ${orphanRows}
    <button class="btn danger" style="margin-top:10px" onclick="deleteOrphanLogs('${workerId}')">${ic.trash(16)} ${T('deleteOrphans')}</button></div></div></div>`:'';
-  const byP={};logs.forEach(l=>{const k=l.projectId||'';byP[k]=byP[k]||{days:0,wage:0};byP[k].days++;byP[k].wage+=Number(l.wage||0)});
+  const byP={};logs.filter(l=>ym(l.date)===cm).forEach(l=>{const k=l.projectId||'';byP[k]=byP[k]||{days:0,wage:0};byP[k].days++;byP[k].wage+=Number(l.wage||0)});
   const projRows=Object.entries(byP).map(([pid,v])=>`<div class="item"><div class="tx"><b>${esc(pid?projectName(pid):T('noProjectLabel'))}</b></div><div style="text-align:left"><span class="num">${v.days}</span> ${T('logShort')}${can('money')?` • ${money(v.wage)}`:''}</div></div>`).join('')||emptyState(ic.crane,T('noProjectsForWorker'),T('noProjectsForWorkerHint'));
   /* one section per month (logs AND payments), current month open — each with its own due/paid/net */
   const payRow=p=>`<div class="item"><div class="tx"><small><span class="num">${esc(p.date)}</span> • ${esc(p.note||T('payment'))}</small></div><div class="rowicons"><b style="color:var(--orange)">${money(p.amount)}</b>${can('editDelete')?`
@@ -1002,7 +1005,7 @@ function workerDetail(workerId,projectId=''){
   body=head
    +orphanWarning
    +(can('money')?`<hr><span class="muted">${ML(cm,true)}</span><div class="row3"><div><span class="muted">${T('monthDue')}</span><br><b style="color:var(--green)">${money(cur.earned)}</b></div><div><span class="muted">${T('monthPaid')}</span><br><b style="color:var(--orange)">${money(cur.paid)}</b></div><div><span class="muted">${T('balance')}</span><br><b>${money(cur.earned-cur.paid)}</b></div></div>`:'')
-   +`<hr><span class="muted">${T('navProjects')}</span>${projRows}`
+   +`<hr><span class="muted">${T('navProjects')} — ${ML(cm,true)}</span>${projRows}`
    +`<hr><span class="muted">${T('monthsByLogs')}</span>${allLogsHtml}`
    +`<div class="actions" style="margin-top:14px">${can('logs')?`<button class="btn primary" onclick="newLog('${workerId}')">${ic.plus(16)} ${T('addLog')}</button><button class="btn success" onclick="newPayment('${workerId}')">${ic.pay(16)} ${T('payment')}</button>`:''}</div>`
    +(can('logs')?`<button class="btn secondary wide" style="margin-top:10px" onclick="printWorkerFull('${workerId}','${cm}')">${ic.print(16)} ${T('printMonthSlip')} ${ML(cm,true)}</button>`:'');
@@ -1150,25 +1153,21 @@ function delProjectPayment(id){
 /* company-facing project print: shows the billed amount only, never worker wage or your profit.
    monthKey='' prints every month, banded with a subtotal each; one month key prints that month
    alone, flat (no banding needed — the whole table already is that one month). */
+/* one month = one block with its own totals. "all months" prints each month as its own block —
+   never one grand total across months, so past months can't get summed into this month's sheet. */
 function companyReportHtml(projectId,monthKey=''){
  const p=db.projects.find(x=>x.id===projectId);
- let logs=[...db.logs.filter(l=>l.projectId===projectId)].sort((a,b)=>a.date.localeCompare(b.date));
- let pays=[...db.projectPayments.filter(x=>x.projectId===projectId)].sort((a,b)=>a.date.localeCompare(b.date));
- if(monthKey){logs=logs.filter(l=>ym(l.date)===monthKey);pays=pays.filter(x=>ym(x.date)===monthKey);}
- const totalBilled=logs.reduce((a,l)=>a+Number(l.wage||0)+Number(l.profit||0),0);
- const totalReceived=pays.reduce((a,x)=>a+Number(x.amount||0),0);
+ const logs=db.logs.filter(l=>l.projectId===projectId), pays=db.projectPayments.filter(x=>x.projectId===projectId);
+ const months=monthKey?[monthKey]:[...new Set([...monthsOf(logs,false),...monthsOf(pays,false)])];
  const logRow=l=>`<tr><td>${esc(l.date)}</td><td>${esc(workerName(l.workerId))}</td><td>${esc(l.hours||0)}</td><td>${esc(l.type||'')}</td><td>${money(Number(l.wage||0)+Number(l.profit||0))}</td></tr>`;
- const logsRows=!logs.length?`<tr><td colspan="5">${T('noRecords')}</td></tr>`
-  :monthKey?logs.map(logRow).join('')
-  :groupByMonth(logs,false).map(([k,ls])=>{
-    const sub=ls.reduce((a,l)=>a+Number(l.wage||0)+Number(l.profit||0),0);
-    return `<tr class="mhead"><td colspan="5">${ML(k)}</td></tr>`+ls.map(logRow).join('')
-     +`<tr class="msub"><td colspan="4">${T('monthlyTotal')} ${ML(k,true)} — <span class="num">${ls.length}</span> ${T('logShort')}</td><td>${money(sub)}</td></tr>`;
-   }).join('');
- const paysRows=pays.map(x=>`<tr><td>${esc(x.date)}</td><td>${esc(x.note||'')}</td><td>${money(x.amount)}</td></tr>`).join('')||`<tr><td colspan="3">${T('noPaymentsDoc')}</td></tr>`;
- return `<p class="muted">${esc(p?.location||'')}${p?.start?' • '+esc(p.start):''}</p>
- <h4>${T('workRecords')}</h4><table class="ptable"><thead><tr><th>${T('date')}</th><th>${T('worker')}</th><th>${T('hours')}</th><th>${T('workType')}</th><th>${T('amountPlain')}</th></tr></thead><tbody>${logsRows}</tbody><tfoot><tr><td colspan="4">${T('grandTotal')}</td><td>${money(totalBilled)}</td></tr></tfoot></table>
- <h4>${T('receivedPayments')}</h4><table class="ptable"><thead><tr><th>${T('date')}</th><th>${T('notes')}</th><th>${T('amountPlain')}</th></tr></thead><tbody>${paysRows}</tbody><tfoot><tr><td colspan="2">${T('grandTotal')}</td><td>${money(totalReceived)}</td></tr></tfoot></table>`;
+ const block=k=>{
+  const ls=logs.filter(l=>ym(l.date)===k).sort((a,b)=>a.date.localeCompare(b.date)), xs=pays.filter(x=>ym(x.date)===k).sort((a,b)=>a.date.localeCompare(b.date));
+  const billed=ls.reduce((a,l)=>a+Number(l.wage||0)+Number(l.profit||0),0), received=xs.reduce((a,x)=>a+Number(x.amount||0),0);
+  return `<div class="month-block"><div class="month-title">${ML(k)}</div>
+  <h4>${T('workRecords')}</h4><table class="ptable"><thead><tr><th>${T('date')}</th><th>${T('worker')}</th><th>${T('hours')}</th><th>${T('workType')}</th><th>${T('amountPlain')}</th></tr></thead><tbody>${ls.map(logRow).join('')||`<tr><td colspan="5">${T('noRecords')}</td></tr>`}</tbody><tfoot><tr><td colspan="4">${T('monthlyTotal')} ${ML(k,true)} — <span class="num">${ls.length}</span> ${T('logShort')}</td><td>${money(billed)}</td></tr></tfoot></table>
+  <h4>${T('receivedPayments')}</h4><table class="ptable"><thead><tr><th>${T('date')}</th><th>${T('notes')}</th><th>${T('amountPlain')}</th></tr></thead><tbody>${xs.map(x=>`<tr><td>${esc(x.date)}</td><td>${esc(x.note||'')}</td><td>${money(x.amount)}</td></tr>`).join('')||`<tr><td colspan="3">${T('noPaymentsDoc')}</td></tr>`}</tbody><tfoot><tr><td colspan="2">${T('monthlyTotal')} ${ML(k,true)}</td><td>${money(received)}</td></tr></tfoot></table></div>`;
+ };
+ return `<p class="muted">${esc(p?.location||'')}${p?.start?' • '+esc(p.start):''}</p>`+(months.map(block).join('')||`<p>${T('noRecords')}</p>`);
 }
 function printProject(id,monthKey=''){
  const p=db.projects.find(x=>x.id===id);

@@ -122,6 +122,10 @@ assert.strictEqual((sheet.match(/<details class="msec" open>/g) || []).length, 1
 assert.ok(sheet.indexOf('شهر 8 / 2026') < sheet.indexOf('شهر 6 / 2026'), 'newest month first');
 assert.ok(sheet.includes(`printWorkerFull('w1','2026-07')`), 'each month offers its own payslip print');
 
+// ---- worker inside one project: split by month, never one all-time sum ----
+run(`workerDetail('w1','p1')`);
+assert.ok((lastCreated.innerHTML.match(/class="msec"/g) || []).length >= 2, 'worker-in-project view is split by month');
+
 // ---- worker payslip: month outer, project as a column, carry-over, never the owner's profit ----
 let printed = '';
 ctx.printPreview = (t, h) => { printed = h; };
@@ -155,7 +159,8 @@ assert.deepStrictEqual(
 // ---- company/project print: month banded, billed amounts only ----
 run(`printProject('p1')`);
 assert.ok(printed.includes('شهر 6 / 2026') && printed.includes('شهر 7 / 2026'), 'project report bands by month, all months by default');
-assert.ok(printed.includes('class="msub"'), 'each month gets a subtotal');
+assert.strictEqual((printed.match(/class="month-block"/g) || []).length, 2, 'each month is its own block');
+assert.ok(!printed.includes('">الإجمالي</td>'), 'no grand total summed across months');
 assert.ok(!printed.includes('أجر العامل'), 'company sheet never labels the worker wage');
 
 // ---- company/project print: a single month can be chosen, no banding, other months excluded ----
