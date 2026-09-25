@@ -36,7 +36,7 @@ function open(file) {
   d.exec(SCHEMA);
   // v1.2 migration: extra worker columns on DBs created before them
   const cols = d.prepare('PRAGMA table_info(workers)').all().map(c => c.name);
-  for (const c of ['idNumber', 'bankName', 'bankAccount', 'idPhoto', 'permitPhoto'])
+  for (const c of ['idNumber', 'bankName', 'bankAccount', 'idPhoto', 'permitPhoto', 'photo'])
     if (!cols.includes(c)) d.exec(`ALTER TABLE workers ADD COLUMN ${c} TEXT DEFAULT ''`);
   if (!cols.includes('defaultProfit')) d.exec(`ALTER TABLE workers ADD COLUMN defaultProfit REAL DEFAULT 0`);
   const pcols = d.prepare('PRAGMA table_info(projects)').all().map(c => c.name);
@@ -56,8 +56,8 @@ function open(file) {
       };
     },
     addWorker(w) {
-      d.prepare('INSERT INTO workers(id,name,phone,job,defaultWage,defaultProfit,idNumber,bankName,bankAccount,idPhoto,permitPhoto) VALUES (@id,@name,@phone,@job,@defaultWage,@defaultProfit,@idNumber,@bankName,@bankAccount,@idPhoto,@permitPhoto)')
-        .run({ phone: '', job: '', defaultWage: 0, defaultProfit: 0, idNumber: '', bankName: '', bankAccount: '', idPhoto: '', permitPhoto: '', ...w });
+      d.prepare('INSERT INTO workers(id,name,phone,job,defaultWage,defaultProfit,idNumber,bankName,bankAccount,idPhoto,permitPhoto,photo) VALUES (@id,@name,@phone,@job,@defaultWage,@defaultProfit,@idNumber,@bankName,@bankAccount,@idPhoto,@permitPhoto,@photo)')
+        .run({ phone: '', job: '', defaultWage: 0, defaultProfit: 0, idNumber: '', bankName: '', bankAccount: '', idPhoto: '', permitPhoto: '', photo: '', ...w });
     },
     addProject(p) {
       d.prepare('INSERT INTO projects(id,name,location,start,done) VALUES (@id,@name,@location,@start,@done)')
@@ -88,8 +88,8 @@ function open(file) {
     },
     deleteExpense(id) { d.prepare('DELETE FROM expenses WHERE id=?').run(id); },
     updateWorker(w) {
-      d.prepare('UPDATE workers SET name=@name, phone=@phone, job=@job, defaultWage=@defaultWage, defaultProfit=@defaultProfit, idNumber=@idNumber, bankName=@bankName, bankAccount=@bankAccount, idPhoto=@idPhoto, permitPhoto=@permitPhoto WHERE id=@id')
-        .run({ defaultProfit: 0, idNumber: '', bankName: '', bankAccount: '', idPhoto: '', permitPhoto: '', ...w });
+      d.prepare('UPDATE workers SET name=@name, phone=@phone, job=@job, defaultWage=@defaultWage, defaultProfit=@defaultProfit, idNumber=@idNumber, bankName=@bankName, bankAccount=@bankAccount, idPhoto=@idPhoto, permitPhoto=@permitPhoto, photo=@photo WHERE id=@id')
+        .run({ defaultProfit: 0, idNumber: '', bankName: '', bankAccount: '', idPhoto: '', permitPhoto: '', photo: '', ...w });
     },
     updateProject(p) {
       d.prepare('UPDATE projects SET name=@name, location=@location, start=@start, done=@done WHERE id=@id')

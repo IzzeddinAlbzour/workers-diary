@@ -211,6 +211,28 @@ app.whenReady().then(() => {
     fs.copyFileSync(r.filePaths[0], photoFile(name));
     return { name, url: photoUrl(name) };
   });
+  // profile photo: raw image goes to the renderer as a data URL so the cropper's canvas isn't
+  // tainted; only the cropped 512px JPEG is written to disk
+  ipcMain.handle('pickImageData', async () => {
+    const r = await dialog.showOpenDialog(win, {
+      filters: [{ name: 'صور', extensions: ['jpg', 'jpeg', 'png', 'webp', 'gif'] }],
+      properties: ['openFile']
+    });
+    if (r.canceled || !r.filePaths.length) return null;
+    if (fs.statSync(r.filePaths[0]).size > 25 * 1024 * 1024) return { tooBig: true };
+    const ext = path.extname(r.filePaths[0]).slice(1).toLowerCase();
+    const buf = fs.readFileSync(r.filePaths[0]);
+    return `data:image/${ext === 'jpg' ? 'jpeg' : ext};base64,${buf.toString('base64')}`;
+  });
+  ipcMain.handle('savePhotoData', (e, dataUrl) => {
+    const m = /^data:image\/jpeg;base64,([A-Za-z0-9+/=]+)$/.exec(String(dataUrl));
+    if (!m) return null;
+    fs.mkdirSync(photosDir(), { recursive: true });
+    const name = crypto.randomUUID() + '.jpg';
+    fs.writeFileSync(photoFile(name), Buffer.from(m[1], 'base64'));
+    return name;
+  });
+  ipcMain.handle('photoBase', () => encodeURI('file:///' + photosDir().replace(/\\/g, '/') + '/'));
   ipcMain.handle('photoUrl', (e, name) => name && fs.existsSync(photoFile(name)) ? photoUrl(name) : null);
   ipcMain.handle('openPhoto', (e, name) => { if (name && fs.existsSync(photoFile(name))) shell.openPath(photoFile(name)); });
   ipcMain.handle('deletePhoto', (e, name) => { try { if (name) fs.rmSync(photoFile(name)); } catch {} });

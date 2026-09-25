@@ -159,6 +159,33 @@ nav button.active::before{content:"";position:absolute;top:0;width:26px;height:3
 .photobox .addph{color:var(--ink-3);font-size:13px;font-weight:600;display:flex;flex-direction:column;align-items:center;gap:5px;padding:14px;width:100%}
 .photobox .addph:hover{color:var(--blue)}
 .photobox .rmph{position:absolute;top:6px;left:6px;background:rgba(11,35,68,.8);color:#fff;width:26px;height:26px;border-radius:8px;display:grid;place-items:center}
+/* profile photo: round avatar, tap = full view; form picker; instagram-style cropper */
+.avatar.pic{border-radius:50%;overflow:hidden;cursor:zoom-in;background:#dfe6f1;transition:transform .15s}
+.avatar.pic:hover{transform:scale(1.06)}
+.avatar.pic img{width:100%;height:100%;object-fit:cover;display:block}
+.pfp{display:flex;flex-direction:column;align-items:center;gap:8px;margin:0 0 14px}
+.pfp .ring{width:92px;height:92px;border-radius:50%;background:var(--blue-soft);color:var(--blue);display:grid;place-items:center;overflow:hidden;border:3px solid var(--blue-soft);transition:transform .15s}
+.pfp .ring:hover{transform:scale(1.04)}
+.pfp .ring img{width:100%;height:100%;object-fit:cover;display:block}
+.pfp .links{display:flex;gap:16px;font-size:13.5px;font-weight:700}
+.pfp .links button{color:var(--blue)}
+.pfp .links .rm{color:var(--red)}
+#cropper{position:fixed;inset:0;z-index:45;background:#0b0f17;color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:20px;padding:16px;user-select:none;animation:fadein .18s ease-out}
+#cropper .bar{display:flex;justify-content:space-between;align-items:center;width:min(320px,88vw);font-size:15px}
+#cropper .bar button{color:#fff;font-weight:600;font-size:15px;padding:8px 2px}
+#cropper .bar .done{color:#4da3ff;font-weight:800}
+#cropper .vp{position:relative;width:min(320px,88vw);aspect-ratio:1;overflow:hidden;touch-action:none;cursor:grab}
+#cropper .vp.drag{cursor:grabbing}
+#cropper .vp img{position:absolute;left:0;top:0;max-width:none;transform-origin:0 0;pointer-events:none}
+#cropper .mask{position:absolute;inset:0;border-radius:50%;box-shadow:0 0 0 999px rgba(11,15,23,.62);border:1.5px solid rgba(255,255,255,.9);pointer-events:none}
+#cropper .mask::before{content:"";position:absolute;inset:0;opacity:0;transition:opacity .2s;background:linear-gradient(90deg,transparent 33.1%,rgba(255,255,255,.45) 33.3%,transparent 33.5%,transparent 66.5%,rgba(255,255,255,.45) 66.7%,transparent 66.9%),linear-gradient(transparent 33.1%,rgba(255,255,255,.45) 33.3%,transparent 33.5%,transparent 66.5%,rgba(255,255,255,.45) 66.7%,transparent 66.9%)}
+#cropper .vp.drag .mask::before{opacity:1}
+#cropper input[type=range]{width:min(260px,76vw);accent-color:#fff}
+#cropper .hint{color:#8d9ab0;font-size:12.5px;text-align:center}
+#lightbox{position:fixed;inset:0;z-index:46;background:rgba(5,9,16,.93);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;cursor:zoom-out;animation:fadein .15s ease-out}
+#lightbox img{width:min(440px,84vw,72vh);aspect-ratio:1;object-fit:cover;border-radius:18px;box-shadow:0 20px 60px rgba(0,0,0,.5);animation:pop .22s cubic-bezier(.2,.9,.3,1.2)}
+#lightbox b{color:#fff;font-size:17px}
+@keyframes pop{from{transform:scale(.8);opacity:0}}
 .chip{display:inline-block;background:var(--blue-soft);color:var(--blue);border-radius:20px;padding:3px 10px;font-size:12px;font-weight:700;margin:2px 0 2px 4px}
 .row3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px}
 
@@ -417,9 +444,9 @@ function toast(msg){
  $('#toast').innerHTML=`<div class="t">${ic.check(16)} ${esc(msg)}</div>`;
  clearTimeout(toast._t); toast._t=setTimeout(()=>{$('#toast').innerHTML=''},2200);
 }
-function undoToast(msg,restoreFn){
+function undoToast(msg,restoreFn,onExpire){
  $('#toast').innerHTML=`<div class="t">${ic.check(16)} ${esc(msg)} <button style="pointer-events:auto;font-weight:800;text-decoration:underline;padding:0 2px" id="undoBtn">${T('undo')}</button></div>`;
- clearTimeout(toast._t); toast._t=setTimeout(()=>{$('#toast').innerHTML=''},6000);
+ clearTimeout(toast._t); toast._t=setTimeout(()=>{$('#toast').innerHTML='';onExpire?.()},6000);
  $('#undoBtn').onclick=()=>{clearTimeout(toast._t);$('#toast').innerHTML='';restoreFn();};
 }
 function emptyState(icon,title,hint,btn){
@@ -512,7 +539,7 @@ function filterWorkers(){
  if(_wsort==='name')list.sort((a,b)=>a.w.name.localeCompare(b.w.name,'ar'));
  else if(_wsort==='balance')list.sort((a,b)=>(b.earned-b.paid)-(a.earned-a.paid));
  $('#workerList').innerHTML=list.length?list.map(({w,earned,paid})=>{
-  return `<div class="card" style="cursor:pointer" onclick="workerDetail('${w.id}')"><div class="item"><div class="lead"><span class="avatar">${esc(w.name.trim().charAt(0))}</span><div class="tx"><h3>${esc(w.name)}</h3><small>${esc(w.job||T('worker'))}${w.phone?' • <span class="num">'+esc(w.phone)+'</span>':''}${can('private')&&w.idNumber?' • '+T('idLabelShort')+' <span class="num">'+esc(w.idNumber)+'</span>':''}</small></div></div>
+  return `<div class="card" style="cursor:pointer" onclick="workerDetail('${w.id}')"><div class="item"><div class="lead">${avatar(w)}<div class="tx"><h3>${esc(w.name)}</h3><small>${esc(w.job||T('worker'))}${w.phone?' • <span class="num">'+esc(w.phone)+'</span>':''}${can('private')&&w.idNumber?' • '+T('idLabelShort')+' <span class="num">'+esc(w.idNumber)+'</span>':''}</small></div></div>
    <div class="rowicons">${can('manage')?`
     <button class="iconbtn" title="${T('edit')}" onclick="event.stopPropagation();editWorker('${w.id}')">${ic.edit(16)}</button>
     <button class="iconbtn del" title="${T('delete')}" onclick="event.stopPropagation();delWorker('${w.id}')">${ic.trash(16)}</button>`:''}
@@ -616,7 +643,7 @@ function reports(){
  <div class="card"><h3>${T('detailedRecords')}</h3><div style="overflow-x:auto"><table class="ptable"><thead><tr><th>${T('date')}</th><th>${T('worker')}</th><th>${T('project')}</th><th>${T('hours')}</th><th>${T('workType')}</th><th>${T('workerWage')}</th><th>${T('yourProfit')}</th><th>${T('dueFromCompany')}</th></tr></thead><tbody>${rows}</tbody></table></div></div>
  <div class="card"><h3>${T('workerStatement')}</h3>
  ${byWorker.length?`<select style="margin-bottom:10px" onchange="_rsort=this.value;reports()"><option value="def" ${_rsort==='def'?'selected':''}>${T('sortDefault')}</option><option value="name" ${_rsort==='name'?'selected':''}>${T('sortName')}</option><option value="earned" ${_rsort==='earned'?'selected':''}>${T('sortHighEarn')}</option></select>`:''}
- ${byWorker.length?byWorker.map(x=>`<div class="item"><div class="lead"><span class="avatar">${esc(x.w.name.trim().charAt(0))}</span><div class="tx"><b>${esc(x.w.name)}</b><br><small><span class="num">${x.days}</span> ${T('logShort')} • <span class="num">${x.hours}</span> ${T('hourUnit')}</small></div></div><div style="text-align:left"><b style="color:var(--green)">${money(x.earned)}</b><br><small>${T('net')} ${money(x.earned-x.paid)}</small></div></div>`).join(''):emptyState(ic.chart,T('noDataYet'),T('noDataHint'))}</div>
+ ${byWorker.length?byWorker.map(x=>`<div class="item"><div class="lead">${avatar(x.w)}<div class="tx"><b>${esc(x.w.name)}</b><br><small><span class="num">${x.days}</span> ${T('logShort')} • <span class="num">${x.hours}</span> ${T('hourUnit')}</small></div></div><div style="text-align:left"><b style="color:var(--green)">${money(x.earned)}</b><br><small>${T('net')} ${money(x.earned-x.paid)}</small></div></div>`).join(''):emptyState(ic.chart,T('noDataYet'),T('noDataHint'))}</div>
  <div class="actions"><button class="btn primary" onclick="printReportView()">${ic.print(17)} ${T('print')}</button>${CU&&CU.isAdmin?`<button class="btn secondary" onclick="exportData()">${ic.down(17)} ${T('exportData')}</button>`:''}</div>`;
 }
 /* worker balance for one month, carrying in everything owed from earlier months so the final
@@ -926,7 +953,7 @@ function modal(title,body,onSave,saveLabel=T('save')){
  $('#saveBtn').onclick=()=>{if(onSave())closeModal()};
  const f=wrap.querySelector('input,select,textarea'); if(f)f.focus();
 }
-function closeModal(){$('#modal')?.remove()}
+function closeModal(){$('#modal')?.remove();dropPfpTemp()}
 document.addEventListener('keydown',e=>{if(e.key==='Escape'){closeModal();closeView();closePrintPreview()}});
 function fieldErr(id,msg){
  const el=$('#'+id); const f=el.closest('.field'); f.classList.add('err');
@@ -959,7 +986,7 @@ function workerDetail(workerId,projectId=''){
  _openWorker=projectId?null:workerId;
  const w=db.workers.find(x=>x.id===workerId);
  if(!w){toast(T('toastWorkerNotFound'));return}
- const head=`<div class="item" style="padding-top:0;border:0"><div class="lead"><span class="avatar">${esc(w.name.trim().charAt(0))}</span><div class="tx"><h3>${esc(w.name)}</h3><small>${esc(w.job||T('worker'))}${w.phone?' • <span class="num">'+esc(w.phone)+'</span>':''}${can('private')&&w.idNumber?' • '+T('idLabelShort')+' <span class="num">'+esc(w.idNumber)+'</span>':''}</small></div></div></div>`;
+ const head=`<div class="item" style="padding-top:0;border:0"><div class="lead">${avatar(w)}<div class="tx"><h3>${esc(w.name)}</h3><small>${esc(w.job||T('worker'))}${w.phone?' • <span class="num">'+esc(w.phone)+'</span>':''}${can('private')&&w.idNumber?' • '+T('idLabelShort')+' <span class="num">'+esc(w.idNumber)+'</span>':''}</small></div></div></div>`;
  let body;
  if(projectId){
   const logs=db.logs.filter(l=>l.workerId===workerId&&l.projectId===projectId);
@@ -1013,6 +1040,91 @@ function workerDetail(workerId,projectId=''){
  viewSheet(w.name,body);
 }
 
+/* ---------- profile photo ---------- */
+let _phBase='';
+const phSrc=n=>_phBase+encodeURIComponent(n);
+const icCam=s=>`<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8h3l2-3h6l2 3h3a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z"/><circle cx="12" cy="13.5" r="3.5"/></svg>`;
+/* round photo avatar when the worker has one; tapping it opens the full photo instead of the row */
+function avatar(w){
+ const ini=esc(w.name.trim().charAt(0));
+ if(!w.photo)return `<span class="avatar">${ini}</span>`;
+ return `<span class="avatar pic" role="button" tabindex="0" data-i="${ini}" title="${T('viewPhoto')}" onclick="event.stopPropagation();viewPfp('${w.id}')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();event.stopPropagation();viewPfp('${w.id}')}"><img src="${phSrc(w.photo)}" alt="" onerror="const s=this.parentNode;s.className='avatar';s.removeAttribute('role');s.removeAttribute('tabindex');s.onclick=s.onkeydown=null;s.textContent=s.dataset.i"></span>`;
+}
+/* top layer (cropper/lightbox) above any open modal: owns Esc/Enter until it's removed */
+function pushLayer(el,keys){
+ document.body.appendChild(el);
+ const k=e=>{const f=keys[e.key];if(f){e.preventDefault();e.stopPropagation();f()}};
+ document.addEventListener('keydown',k,true);
+ el.close=()=>{document.removeEventListener('keydown',k,true);el.remove()};
+}
+function viewPfp(id){
+ const w=db.workers.find(x=>x.id===id); if(!w||!w.photo)return;
+ const el=document.createElement('div');el.id='lightbox';
+ el.innerHTML=`<img src="${phSrc(w.photo)}" alt=""><b>${esc(w.name)}</b>`;
+ el.onclick=()=>el.close();
+ pushLayer(el,{Escape:()=>el.close()});
+}
+/* instagram-style crop: drag to pan, wheel/pinch/slider to zoom, double-click toggles zoom.
+   Image always covers the circle. Resolves a 512px JPEG data URL, or null on cancel. */
+function cropImage(src){return new Promise(res=>{
+ const img=new Image();
+ img.onerror=()=>{toast(T('toastPhotoFail'));res(null)};
+ img.onload=()=>{
+  const el=document.createElement('div');el.id='cropper';
+  el.innerHTML=`<div class="bar"><button type="button" data-a="x">${T('cancel')}</button><b>${T('cropTitle')}</b><button type="button" class="done" data-a="ok">${T('done')}</button></div>
+   <div class="vp"><div class="mask"></div></div>
+   <input type="range" min="1" max="4" step="0.01" value="1" dir="ltr" aria-label="${T('zoom')}">
+   <div class="hint">${T('cropHint')}</div>`;
+  const vp=el.querySelector('.vp'),zr=el.querySelector('input');
+  vp.prepend(img);
+  let V=0,base=1,z=1,tx=0,ty=0,drag=null;
+  const sc=()=>base*z;
+  const draw=()=>{
+   tx=Math.min(0,Math.max(V-img.naturalWidth*sc(),tx));ty=Math.min(0,Math.max(V-img.naturalHeight*sc(),ty));
+   img.style.transform=`translate(${tx}px,${ty}px) scale(${sc()})`;
+  };
+  const zoomTo=(nz,cx=V/2,cy=V/2)=>{nz=Math.min(4,Math.max(1,nz));const k=nz/z;tx=cx-(cx-tx)*k;ty=cy-(cy-ty)*k;z=nz;zr.value=z;draw()};
+  const at=e=>{const r=vp.getBoundingClientRect();return[e.clientX-r.left,e.clientY-r.top]};
+  const finish=ok=>{
+   let out=null;
+   if(ok){const c=document.createElement('canvas');c.width=c.height=512;const g=c.getContext('2d');g.imageSmoothingQuality='high';
+    g.drawImage(img,-tx/sc(),-ty/sc(),V/sc(),V/sc(),0,0,512,512);out=c.toDataURL('image/jpeg',.9)}
+   el.close();res(out);
+  };
+  vp.onpointerdown=e=>{drag=[e.clientX,e.clientY];vp.setPointerCapture(e.pointerId);vp.classList.add('drag')};
+  vp.onpointermove=e=>{if(!drag)return;tx+=e.clientX-drag[0];ty+=e.clientY-drag[1];drag=[e.clientX,e.clientY];draw()};
+  vp.onpointerup=vp.onpointercancel=()=>{drag=null;vp.classList.remove('drag')};
+  vp.onwheel=e=>{e.preventDefault();zoomTo(z*Math.exp(-e.deltaY*(e.ctrlKey?.01:.002)),...at(e))};
+  vp.ondblclick=e=>zoomTo(z>1.05?1:2,...at(e));
+  zr.oninput=()=>zoomTo(+zr.value);
+  el.onclick=e=>{const a=e.target.closest('[data-a]');if(a)finish(a.dataset.a==='ok')};
+  const pan=(dx,dy)=>{tx+=dx;ty+=dy;draw()};
+  pushLayer(el,{Escape:()=>finish(false),Enter:()=>finish(true),
+   ArrowLeft:()=>pan(10,0),ArrowRight:()=>pan(-10,0),ArrowUp:()=>pan(0,10),ArrowDown:()=>pan(0,-10),
+   '+':()=>zoomTo(z*1.1),'=':()=>zoomTo(z*1.1),'-':()=>zoomTo(z/1.1)});
+  V=vp.clientWidth;base=V/Math.min(img.naturalWidth,img.naturalHeight);
+  tx=(V-img.naturalWidth*base)/2;ty=(V-img.naturalHeight*base)/2;draw();
+ };
+ img.src=src;
+})}
+function renderPfp(){
+ const box=$('#pfp'); if(!box)return;
+ const n=_photos.photo;
+ box.innerHTML=`<button type="button" class="ring" onclick="pickPfp()" aria-label="${T(n?'changePhoto':'addProfilePhoto')}">${n?`<img src="${phSrc(n)}" alt="">`:icCam(34)}</button>
+  <div class="links"><button type="button" onclick="pickPfp()">${T(n?'changePhoto':'addProfilePhoto')}</button>${n?`<button type="button" class="rm" onclick="_photos.photo='';renderPfp()">${T('removePhoto')}</button>`:''}</div>`;
+}
+/* crops picked during an open form; any not kept by a save get deleted when the form closes */
+let _pfpTemp=[];
+async function pickPfp(){
+ const src=await window.api.pickImageData(); if(!src)return;
+ if(src.tooBig)return toast(T('toastPhotoTooBig'));
+ const out=await cropImage(src); if(!out)return;
+ const name=await window.api.savePhotoData(out); if(!name)return toast(T('toastPhotoFail'));
+ _pfpTemp.push(name);_photos.photo=name;renderPfp();
+}
+function keepPfp(){_pfpTemp=_pfpTemp.filter(n=>n!==_photos.photo)}
+function dropPfpTemp(){_pfpTemp.forEach(n=>window.api.deletePhoto(n));_pfpTemp=[]}
+
 /* ---------- workers CRUD ---------- */
 let _photos={};
 function renderPhotoBox(kind){
@@ -1027,7 +1139,7 @@ function renderPhotoBox(kind){
 async function pickPhoto(kind){const r=await window.api.pickPhoto();if(!r)return;_photos[kind]=r.name;renderPhotoBox(kind)}
 function removePhoto(kind){_photos[kind]='';renderPhotoBox(kind)}
 function workerForm(w={}){
- return F('n',T('workerName'),`<input id="n" value="${esc(w.name||'')}">`)
+ return `<div class="pfp" id="pfp"></div>`+F('n',T('workerName'),`<input id="n" value="${esc(w.name||'')}">`)
  +`<div class="row">${F('p',T('phone'),`<input id="p" inputmode="tel" value="${esc(w.phone||'')}">`)}${F('j',T('job'),`<input id="j" placeholder="${T('jobPlaceholder')}" value="${esc(w.job||'')}">`)}</div>`
  +`<div class="row">${F('w',T('defaultDailyWage'),`<input id="w" type="text" inputmode="decimal" oninput="digits(this)" value="${w.defaultWage??''}">`)}${F('wp',T('defaultProfit'),`<input id="wp" type="text" inputmode="decimal" oninput="digits(this)" value="${w.defaultProfit??0}">`)}</div>`
  +`<details class="msec"${w.idNumber||w.bankName||w.bankAccount||w.idPhoto||w.permitPhoto?' open':''}><summary><span>${T('moreDetails')}</span></summary><div class="mbody">${F('idn',T('idNumber'),`<input id="idn" inputmode="numeric" value="${esc(w.idNumber||'')}">`)}`
@@ -1035,28 +1147,28 @@ function workerForm(w={}){
  +`<div class="row"><div class="field"><label>${T('idPhoto')}</label><div class="photobox" id="ph-idPhoto"></div></div><div class="field"><label>${T('permitPhoto')}</label><div class="photobox" id="ph-permitPhoto"></div></div></div></div></details>`;
 }
 function readWorkerExtra(){
- return {idNumber:$('#idn').value.trim(),bankName:$('#bn').value.trim(),bankAccount:$('#ba').value.trim(),idPhoto:_photos.idPhoto||'',permitPhoto:_photos.permitPhoto||''};
+ return {idNumber:$('#idn').value.trim(),bankName:$('#bn').value.trim(),bankAccount:$('#ba').value.trim(),idPhoto:_photos.idPhoto||'',permitPhoto:_photos.permitPhoto||'',photo:_photos.photo||''};
 }
 function newWorker(){
  _photos={};
  modal(T('newWorkerTitle'),workerForm(),()=>{
   if(!$('#n').value.trim())return fieldErr('n',T('errWorkerName'));
   const w={id:crypto.randomUUID(),name:$('#n').value.trim(),phone:$('#p').value,job:$('#j').value,defaultWage:Number($('#w').value||0),defaultProfit:Number($('#wp').value||0),...readWorkerExtra()};
-  db.workers.push(w);window.api.addWorker(w);render();toast(T('toastWorkerAdded'));return true});
- renderPhotoBox('idPhoto');renderPhotoBox('permitPhoto');
+  db.workers.push(w);window.api.addWorker(w);keepPfp();render();toast(T('toastWorkerAdded'));return true});
+ renderPfp();renderPhotoBox('idPhoto');renderPhotoBox('permitPhoto');
 }
 function editWorker(id){
  const w=db.workers.find(x=>x.id===id);
- _photos={idPhoto:w.idPhoto||'',permitPhoto:w.permitPhoto||''};
+ _photos={idPhoto:w.idPhoto||'',permitPhoto:w.permitPhoto||'',photo:w.photo||''};
  const origPhotos={..._photos};
  modal(T('editWorkerTitle'),workerForm(w),()=>{
   if(!$('#n').value.trim())return fieldErr('n',T('errWorkerName'));
   Object.assign(w,{name:$('#n').value.trim(),phone:$('#p').value,job:$('#j').value,defaultWage:Number($('#w').value||0),defaultProfit:Number($('#wp').value||0)},readWorkerExtra());
-  window.api.updateWorker(w);
+  window.api.updateWorker(w);keepPfp();
   /* only delete the OLD file, and only once the swap is actually committed — never on cancel */
-  for(const k of ['idPhoto','permitPhoto'])if(origPhotos[k]&&origPhotos[k]!==_photos[k])window.api.deletePhoto(origPhotos[k]);
+  for(const k of ['idPhoto','permitPhoto','photo'])if(origPhotos[k]&&origPhotos[k]!==_photos[k])window.api.deletePhoto(origPhotos[k]);
   render();toast(T('toastWorkerSaved'));return true});
- renderPhotoBox('idPhoto');renderPhotoBox('permitPhoto');
+ renderPfp();renderPhotoBox('idPhoto');renderPhotoBox('permitPhoto');
 }
 function delWorker(id){
  const w=db.workers.find(x=>x.id===id);
@@ -1071,7 +1183,7 @@ function delWorker(id){
    logs.forEach(l=>{db.logs.push(l);window.api.addLog(l)});
    pays.forEach(p=>{db.payments.push(p);window.api.addPayment(p)});
    render();toast(T('toastWorkerRestored'));
-  });
+  },()=>[w.idPhoto,w.permitPhoto,w.photo].forEach(n=>n&&window.api.deletePhoto(n)));
  });
 }
 
@@ -1453,6 +1565,7 @@ async function boot(){
  const lic=await window.api.licenseState();
  if(!lic.licensed){activationScreen(lic.machineId);return;}
  db=await window.api.getAll();
+ _phBase=await window.api.photoBase();
  try{
   const legacy=localStorage.getItem(KEY);
   if(legacy && !db.workers.length && !db.projects.length && !db.logs.length && !db.payments.length){
