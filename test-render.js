@@ -126,6 +126,9 @@ assert.ok(sheet.includes(`printWorkerFull('w1','2026-07')`), 'each month offers 
 run(`workerDetail('w1','p1')`);
 assert.ok((lastCreated.innerHTML.match(/class="msec"/g) || []).length >= 2, 'worker-in-project view is split by month');
 
+// ---- log form defaults to the project this worker was last logged on ----
+assert.strictEqual(run(`lastProjectFor('w1')`), run(`db.logs.filter(l=>l.workerId==='w1').sort((a,b)=>b.date.localeCompare(a.date))[0].projectId`), 'last project preselected');
+
 // ---- worker payslip: month outer, project as a column, carry-over, never the owner's profit ----
 let printed = '';
 ctx.printPreview = (t, h) => { printed = h; };
