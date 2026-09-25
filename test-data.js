@@ -32,7 +32,7 @@ const wPaid = all.payments.filter(x => x.workerId === w.id).reduce((a, x) => a +
 assert.strictEqual(wEarned - wPaid, 180, 'per-worker balance');
 
 // field names round-trip identical to JSON shape
-assert.deepStrictEqual(all.workers[0], { ...w, defaultProfit: 0, idNumber: '', bankName: '', bankAccount: '', idPhoto: '', permitPhoto: '' });
+assert.deepStrictEqual(all.workers[0], { ...w, defaultProfit: 0, idNumber: '', bankName: '', bankAccount: '', idPhoto: '', permitPhoto: '', photo: '' });
 assert.deepStrictEqual(all.projects[0], { ...p, done: 0 });
 assert.deepStrictEqual(all.logs[0], { ...l1, profit: 0 });
 assert.deepStrictEqual(all.payments[0], pay);
@@ -48,7 +48,7 @@ assert.deepStrictEqual(db.getAll(), snapshot, 'export -> reset -> import restore
 // update round-trip
 const w2 = { ...w, name: 'أحمد محدث', defaultWage: 175 };
 db.updateWorker(w2);
-assert.deepStrictEqual(db.getAll().workers[0], { ...w2, defaultProfit: 0, idNumber: '', bankName: '', bankAccount: '', idPhoto: '', permitPhoto: '' }, 'updateWorker persists all fields');
+assert.deepStrictEqual(db.getAll().workers[0], { ...w2, defaultProfit: 0, idNumber: '', bankName: '', bankAccount: '', idPhoto: '', permitPhoto: '', photo: '' }, 'updateWorker persists all fields');
 const l1b = { ...l1, wage: 160, hours: 9 };
 db.updateLog(l1b);
 assert.deepStrictEqual(db.getAll().logs.find(x => x.id === l1.id), { ...l1b, profit: 0 }, 'updateLog persists');
@@ -84,7 +84,7 @@ a2 = db.getAll();
 assert.strictEqual(a2.workers.length + a2.logs.length + a2.payments.length, 0, 'worker delete cascades logs and payments');
 
 // v1.2: worker extra fields round-trip
-const w3 = { id: uuid(), name: 'سامي', phone: '', job: '', defaultWage: 100, idNumber: '401234567', bankName: 'بنك فلسطين', bankAccount: '123456', idPhoto: 'a.jpg', permitPhoto: 'b.jpg' };
+const w3 = { id: uuid(), name: 'سامي', phone: '', job: '', defaultWage: 100, idNumber: '401234567', bankName: 'بنك فلسطين', bankAccount: '123456', idPhoto: 'a.jpg', permitPhoto: 'b.jpg', photo: 'c.jpg' };
 db.addWorker(w3);
 assert.deepStrictEqual(db.getAll().workers[0], { ...w3, defaultProfit: 0 }, 'worker extra fields persist');
 db.updateWorker({ ...w3, idNumber: '999', bankName: 'العربي' });
